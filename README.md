@@ -260,42 +260,12 @@ class MyHookProvider(HookProvider):
         print(f"✓ Task '{event.name}' completed")
     
     def _on_complete(self, event: SwarmCompletedEvent) -> None:
-        print(f"🏁 Done! {event.agents_spawned} agents, {event.tasks_completed} tasks")
+        print("🏁 Swarm completed!")
 
 swarm = DynamicSwarm(..., hooks=[MyHookProvider()])
 ```
 
 Available events: `AgentSpawnedEvent`, `TaskCreatedEvent`, `TaskStartedEvent`, `TaskCompletedEvent`, `SwarmCompletedEvent`, `SwarmFailedEvent`
-
-## When to Use the SDK Directly
-
-`DynamicSwarm` is for **dynamic workflows** where the structure is determined at runtime from natural language.
-
-For **static workflows** where you know the agents and structure upfront, use the official Strands SDK directly:
-
-```python
-from strands import Agent
-from strands.multiagent.swarm import Swarm
-from strands.multiagent.graph import GraphBuilder
-
-# Swarm - dynamic handoffs with shared context
-researcher = Agent(name="researcher", system_prompt="You research topics.")
-analyzer = Agent(name="analyzer", system_prompt="You analyze data.")
-swarm = Swarm([researcher, analyzer])
-result = swarm("Research and analyze AI trends")
-
-# Graph - explicit dependency-based execution
-builder = GraphBuilder()
-builder.add_node(researcher, "research")
-builder.add_node(analyzer, "analyze")
-builder.add_edge("research", "analyze")
-graph = builder.build()
-result = graph("Research AI trends")
-```
-
-See the SDK docs:
-- [`strands.multiagent.swarm.Swarm`](https://github.com/strands-agents/sdk-python/blob/main/src/strands/multiagent/swarm.py)
-- [`strands.multiagent.graph.Graph`](https://github.com/strands-agents/sdk-python/blob/main/src/strands/multiagent/graph.py)
 
 ## Inspiration
 
