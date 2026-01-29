@@ -72,7 +72,7 @@ Query: "Research AI trends and write a summary report"
 ## Installation
 
 ```bash
-pip install git+https://github.com/JackXu0/strands-swarms.git
+pip install strands-swarms
 ```
 
 ## Quick Start
