@@ -15,7 +15,7 @@ Given a query, the swarm automatically plans the workflow, spawns specialized su
 ## Installation
 
 ```bash
-pip install strands-swarms
+pip install git+https://github.com/strands-agents/strands-swarms.git
 ```
 
 ## Quick Start
@@ -323,9 +323,8 @@ swarm = DynamicSwarm(..., hooks=[MyHooks()])
 ## Roadmap
 
 - [x] **Rollout execution** - String-in, string-out multi-agent workflows
-- [x] **Dynamic planning** - Automatic workflow design from natural language
-- [x] **Task dependencies** - DAG-based execution with `TaskGraph`
-- [x] **Dynamic handoffs** - Flexible agent collaboration with `TaskSwarm`
+- [x] **Dynamic agent spawning and task planning** - Planner agent automatically creates specialized sub-agents, tasks, and dependencies from natural language
+- [x] **Event-driven execution** - Real-time monitoring with hooks and dynamic inter-task handoffs via `TaskSwarm`
 - [ ] **RL support** - Training and fine-tuning via strands-sglang integration
 - [ ] **Reward shaping** - Custom reward functions for multi-agent optimization
 
