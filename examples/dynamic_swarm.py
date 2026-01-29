@@ -12,39 +12,35 @@ import time
 
 from strands import tool
 from strands.models import BedrockModel
+
 from strands_swarms import (
+    AgentSpawnedEvent,
     DynamicSwarm,
     HookProvider,
     HookRegistry,
-    AgentSpawnedEvent,
-    TaskCreatedEvent,
-    TaskStartedEvent,
-    TaskCompletedEvent,
     SwarmCompletedEvent,
     SwarmFailedEvent,
+    TaskCompletedEvent,
+    TaskCreatedEvent,
+    TaskStartedEvent,
 )
-
-
-# --- Tools available to spawned agents ---
 
 
 @tool
 def search_web(query: str) -> str:
     """Search the web for information."""
-    # Stub: replace with actual search API call
     return f"[Search Results for '{query}']\n- Result 1: Latest developments...\n- Result 2: Key trends..."
 
 
 @tool
 def analyze_data(data: str) -> str:
     """Analyze data and extract insights."""
-    return f"[Analysis]\nKey insights from the data:\n1. Trend identified\n2. Pattern detected\n3. Recommendation: ..."
+    return "[Analysis]\nKey insights:\n1. Trend identified\n2. Pattern detected\n3. Recommendation: ..."
 
 
 @tool
 def write_file(path: str, content: str) -> str:
     """Write content to a file."""
-    # Stub: replace with actual file write
     print(f"\n--- Writing to {path} ---\n{content[:200]}...\n")
     return f"Successfully wrote {len(content)} characters to {path}"
 
@@ -52,15 +48,46 @@ def write_file(path: str, content: str) -> str:
 @tool
 def execute_code(code: str) -> str:
     """Execute Python code safely."""
-    # Stub: replace with sandboxed execution
     return "[Code Output]\nExecuted successfully. Output: ..."
 
 
-# --- Custom Hook Provider Example ---
+TOOLS = {
+    "search_web": search_web,
+    "analyze_data": analyze_data,
+    "write_file": write_file,
+    "execute_code": execute_code,
+}
+
+MODELS = {
+    "powerful": BedrockModel(model_id="us.anthropic.claude-3-opus-20240229-v1:0"),
+    "fast": BedrockModel(model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0"),
+}
+
+
+def main():
+    swarm = DynamicSwarm(
+        available_tools=TOOLS,
+        available_models=MODELS,
+        orchestrator_model=MODELS["powerful"],
+        default_agent_model="fast",
+        verbose=True,  # or hooks=[TimestampedHookProvider()]
+    )
+
+    query = "Research the latest AI trends and write a summary report"
+    print(f"Query: {query}\n{'=' * 60}")
+
+    result = swarm.execute(query)
+
+    print("\n" + "=" * 60)
+    print(f"Status: {result.status}")
+    print(f"Agents spawned: {result.agents_spawned}")
+    print(f"Tasks created: {result.tasks_created}")
+    if result.final_response:
+        print(f"\nFinal response:\n{result.final_response}")
 
 
 class TimestampedHookProvider(HookProvider):
-    """Logs swarm events with timestamps. Follows the strands HookProvider pattern."""
+    """Logs swarm events with timestamps."""
 
     def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
         registry.add_callback(AgentSpawnedEvent, self._on_agent_spawned)
@@ -74,7 +101,7 @@ class TimestampedHookProvider(HookProvider):
         return time.strftime("%H:%M:%S")
 
     def _on_agent_spawned(self, event: AgentSpawnedEvent) -> None:
-        print(f"[{self._ts()}] 🤖 Agent '{event.name}' spawned with role: {event.role}")
+        print(f"[{self._ts()}] 🤖 Agent '{event.name}' spawned: {event.role}")
 
     def _on_task_created(self, event: TaskCreatedEvent) -> None:
         deps = f" (depends on: {event.depends_on})" if event.depends_on else ""
@@ -91,48 +118,6 @@ class TimestampedHookProvider(HookProvider):
 
     def _on_swarm_failed(self, event: SwarmFailedEvent) -> None:
         print(f"[{self._ts()}] ❌ Swarm failed: {event.error}")
-
-
-# --- Main ---
-
-
-def main():
-    # Models: use any strands Model (BedrockModel, AnthropicModel, LiteLLMModel, etc.)
-    powerful_model = BedrockModel(model_id="us.anthropic.claude-3-opus-20240229-v1:0")
-    fast_model = BedrockModel(model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0")
-
-    swarm = DynamicSwarm(
-        available_tools={
-            "search_web": search_web,
-            "analyze_data": analyze_data,
-            "write_file": write_file,
-            "execute_code": execute_code,
-        },
-        available_models={
-            "powerful": powerful_model,
-            "fast": fast_model,
-        },
-        orchestrator_model=powerful_model,
-        default_agent_model="fast",
-        # Use verbose=True for rich CLI output, or hooks=[TimestampedHookProvider()] for custom logging
-        verbose=True,
-    )
-
-    query = "Research the latest AI trends and write a summary report"
-    print(f"Query: {query}\n")
-    print("=" * 60)
-
-    result = swarm.execute(query)
-
-    print("\n" + "=" * 60)
-    print("RESULTS")
-    print("=" * 60)
-    print(f"Status: {result.status}")
-    print(f"Agents spawned: {result.agents_spawned}")
-    print(f"Tasks created: {result.tasks_created}")
-
-    if result.final_response:
-        print(f"\nFinal response:\n{result.final_response}")
 
 
 if __name__ == "__main__":
