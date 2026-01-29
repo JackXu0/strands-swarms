@@ -26,6 +26,11 @@ from strands_swarms import (
 )
 
 
+# =============================================================================
+# Tools
+# =============================================================================
+
+
 @tool
 def search_web(query: str) -> str:
     """Search the web for information."""
@@ -58,10 +63,23 @@ TOOLS = {
     "execute_code": execute_code,
 }
 
+
+# =============================================================================
+# Models
+# =============================================================================
+# Strands supports: AnthropicModel, OpenAIModel, BedrockModel, GeminiModel,
+# LiteLLMModel, OllamaModel, MistralModel, LlamaCppModel, SageMakerModel, etc.
+# See: https://github.com/strands-agents/sdk-python/tree/main/src/strands/models
+
 MODELS = {
     "powerful": BedrockModel(model_id="us.anthropic.claude-3-opus-20240229-v1:0"),
     "fast": BedrockModel(model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0"),
 }
+
+
+# =============================================================================
+# Main
+# =============================================================================
 
 
 def main():
@@ -84,6 +102,11 @@ def main():
     print(f"Tasks created: {result.tasks_created}")
     if result.final_response:
         print(f"\nFinal response:\n{result.final_response}")
+
+
+# =============================================================================
+# Hooks
+# =============================================================================
 
 
 class TimestampedHookProvider(HookProvider):
