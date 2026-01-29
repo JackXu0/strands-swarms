@@ -14,24 +14,24 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from textwrap import dedent
-from typing import Any, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from strands import Agent
-from strands.multiagent.base import Status, MultiAgentResult
-from strands.multiagent.graph import Graph, GraphBuilder, GraphResult
 from strands.hooks import HookProvider, HookRegistry
+from strands.multiagent.base import MultiAgentResult, Status
+from strands.multiagent.graph import Graph, GraphBuilder, GraphResult
 
 from .events import (
     AGENT_COLORS,
-    SwarmStartedEvent,
-    PlanningStartedEvent,
-    ExecutionStartedEvent,
-    TaskStartedEvent,
-    TaskCompletedEvent,
     ExecutionCompletedEvent,
+    ExecutionStartedEvent,
+    PlanningStartedEvent,
+    PrintingHookProvider,
     SwarmCompletedEvent,
     SwarmFailedEvent,
-    PrintingHookProvider,
+    SwarmStartedEvent,
+    TaskCompletedEvent,
+    TaskStartedEvent,
     create_colored_callback_handler,
 )
 
@@ -522,7 +522,7 @@ class DynamicSwarm:
             DynamicSwarmResult containing planning and execution results.
         """
         # Import here to avoid circular import
-        from .orchestrator import set_swarm_config, create_orchestrator_agent
+        from .orchestrator import set_swarm_config
 
         # Create swarm config for this execution
         config = SwarmConfig(

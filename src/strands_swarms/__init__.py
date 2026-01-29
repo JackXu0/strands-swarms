@@ -33,30 +33,30 @@ Example:
     result = swarm.execute("Research AI trends and summarize")
 """
 
-from .swarm import DynamicSwarm, DynamicSwarmResult
-from .orchestrator import create_orchestrator_agent
-from .events import (
-    # Planning/Orchestration events
-    SwarmStartedEvent,
-    PlanningStartedEvent,
-    AgentSpawnedEvent,
-    TaskCreatedEvent,
-    PlanningCompletedEvent,
-    # Execution events
-    ExecutionStartedEvent,
-    TaskStartedEvent,
-    TaskCompletedEvent,
-    TaskFailedEvent,
-    ExecutionCompletedEvent,
-    SwarmCompletedEvent,
-    SwarmFailedEvent,
-    # Hook provider
-    PrintingHookProvider,
-)
-
 # Re-export strands types for convenience
 from strands.hooks import HookProvider, HookRegistry
 from strands.multiagent.base import Status
+
+from .events import (
+    AgentSpawnedEvent,
+    ExecutionCompletedEvent,
+    # Execution events
+    ExecutionStartedEvent,
+    PlanningCompletedEvent,
+    PlanningStartedEvent,
+    # Hook provider
+    PrintingHookProvider,
+    SwarmCompletedEvent,
+    SwarmFailedEvent,
+    # Planning/Orchestration events
+    SwarmStartedEvent,
+    TaskCompletedEvent,
+    TaskCreatedEvent,
+    TaskFailedEvent,
+    TaskStartedEvent,
+)
+from .orchestrator import create_orchestrator_agent
+from .swarm import DynamicSwarm, DynamicSwarmResult
 
 __version__ = "0.1.0"
 

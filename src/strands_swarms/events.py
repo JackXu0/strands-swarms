@@ -13,7 +13,6 @@ from typing import Any
 
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
 
-
 # =============================================================================
 # Planning Events
 # =============================================================================
