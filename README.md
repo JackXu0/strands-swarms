@@ -107,7 +107,7 @@ Query: "Research AI trends and write a summary report"
 
 ## Example Output
 
-With `verbose=True`, you get rich status updates as the swarm executes.
+With `verbose=True`, you get rich status updates as the swarm executes. Each agent is assigned a unique color via ANSI escape codes to easily track which agent is producing output during execution.
 
 ```
 ============================================================
@@ -155,17 +155,17 @@ Tool #7: execute_swarm
 🤖 AGENTS
 ········································
 
-  [researcher]
+  🔵 [researcher]
     Role: Perform web research on the latest AI trends
     Tools: ['search_web']
     Model: powerful
 
-  [analyst]
+  🟢 [analyst]
     Role: Analyze the AI trends research data
     Tools: ['analyze_data']
     Model: powerful
 
-  [report_writer]
+  🟡 [report_writer]
     Role: Write a summary report on the latest AI trends
     Tools: ['write_file']
     Model: powerful
@@ -174,17 +174,17 @@ Tool #7: execute_swarm
 📋 TASKS & DEPENDENCIES
 ········································
 
-  [research_ai_trends]
+  🔵 [research_ai_trends]
     Agent: researcher
     Description: Search the web for the latest trends in artificial intelligence
     ⚡ Can start immediately
 
-  [analyze_research]
+  🟢 [analyze_research]
     Agent: analyst
     Description: Analyze the data gathered from the web research on AI trends
     ⏳ Waits for: research_ai_trends
 
-  [write_report]
+  🟡 [write_report]
     Agent: report_writer
     Description: Write a summary report on the latest AI trends based on the research and analysis
     ⏳ Waits for: analyze_research
@@ -211,108 +211,50 @@ Let me know if you would like me to modify the workflow in any way. Otherwise, t
 ----------------------------------------
 
 🔄 Mode: graph
-📋 Tasks to execute: [research_ai_trends, analyze_research, write_report]
+📋 Tasks to execute: [🔵 research_ai_trends, 🟢 analyze_research, 🟡 write_report]
 
-▶️  Executing task: research_ai_trends
+▶️  Executing task: 🔵 research_ai_trends
 
-[researcher] <thinking>
-To research the latest trends in AI, I will need to use the search_web tool. This tool takes in a query parameter, which in this case can be inferred as "latest AI trends".
-
-The search results from the search_web tool should provide a good overview of the current state and direction of AI. I can then synthesize the key points from the search results into a concise summary report for the user.
-
-No other tools besides search_web are needed to complete this request. And the search_web tool has all the necessary information (the query string) to be called successfully.
+🔵 [researcher] <thinking>
+To research the latest trends in AI, I will need to use the search_web tool...
 </thinking>[calling search_web] 
 
 Here is a summary of the latest AI trends based on my research:
 
-- Large language models like GPT-3 are becoming more powerful and capable of performing a wider range of natural language tasks with less training data. There is ongoing research into making these models more efficient, controllable, and adaptable to different domains.
+- Large language models like GPT-3 are becoming more powerful...
+- AI is being increasingly applied to scientific research...
+- Responsible AI is a growing focus...
+- Multimodal AI is an active area of research...
+- AI hardware is rapidly advancing...
+- Industrial application of AI continues to grow...
 
-- AI is being increasingly applied to scientific research to accelerate discovery in areas like drug development, materials science, and climate modeling. AI techniques like deep learning are helping identify patterns and insights from vast datasets.
+In summary, AI capabilities are rapidly advancing while also becoming more 
+responsible, efficient, multimodal, and industrialized.
+   ✓ Completed: 🔵 research_ai_trends
 
-- Responsible AI is a growing focus, with work on making AI systems more explainable, fair, private, secure, and aligned with human values. This includes technical approaches like federated learning as well as interdisciplinary research spanning ethics, policy, and social impact. 
+▶️  Executing task: 🟢 analyze_research
 
-- Multimodal AI that can understand and generate content across text, images, video, and audio is an active area of research. Models like DALL-E that generate images from text descriptions point to more advanced multimedia AI capabilities on the horizon.
-
-- AI hardware like specialized AI chips and neuromorphic computing is rapidly advancing to provide the computational power needed to train and run increasingly complex AI models more efficiently. This includes work on edge AI for deploying AI on resource-constrained devices.
-
-- The industrial application of AI continues to grow, with more companies adopting AI for automation, predictive analytics, personalization, and other use cases across sectors. Innovations in MLOps and AI development platforms are helping scale and manage enterprise AI initiatives.
-
-In summary, AI capabilities are rapidly advancing while also becoming more responsible, efficient, multimodal, and industrialized. Transformative impacts are happening in research and across industries, guided by crucial work on AI ethics and robustness. The coming years will likely see AI systems that are far more capable, trustworthy, and ubiquitous.   ✓ Completed: research_ai_trends
-
-▶️  Executing task: analyze_research
-
-[analyst] <thinking>
-The task is to analyze the research data on AI trends that has already been gathered. The summarized data is provided as input from the research_ai_trends node.
-
-The most relevant tool to use for this task is:
-
-analyze_data
-- This tool is designed to analyze a given set of data and extract insights 
-- It takes a single required parameter "data" which should contain the data to be analyzed
-- We have the research summary available as input, so we can directly provide that as the "data" parameter
-
-No other tools seem necessary, as we already have the data gathered and just need to analyze it. The analyze_data tool should be sufficient to generate an analysis of the AI trends based on the research summary.
-
-Since all required parameters are available, we can proceed with calling the analyze_data tool.
+🟢 [analyst] <thinking>
+The task is to analyze the research data on AI trends...
 </thinking>[calling analyze_data] 
 
 Based on the analysis, the key trends and insights regarding AI are:
+1. Significant advancements in large language models...
+2. AI is having a transformative impact on scientific research...
+3. Growing emphasis on responsible AI systems...
+4. Multimodal AI is an emerging frontier...
+5. Rapid progress in AI hardware...
+6. Adoption of AI in industry continues to expand...
+   ✓ Completed: 🟢 analyze_research
 
-1. Significant advancements are being made in the capabilities of large language models like GPT-3, enabling them to perform a wider range of natural language tasks more efficiently with less training data. Further research is focused on improving their controllability and adaptability.
+▶️  Executing task: 🟡 write_report
 
-2. AI is having a transformative impact on scientific research by accelerating discovery in fields like drug development, materials science, and climate modeling. Deep learning techniques are uncovering valuable patterns and insights from large datasets. 
-
-3. There is a growing emphasis on developing responsible AI systems that are explainable, fair, private, secure, and aligned with human values. This involves technical approaches like federated learning as well as important interdisciplinary work across ethics, policy, and examining social impact.
-
-4. Multimodal AI that can understand and generate content across text, images, video and audio is an emerging frontier. Generative models like DALL-E that produce images from text input hint at the multimedia AI capabilities that may be possible in the near future.
-
-5. Rapid progress is occurring in AI hardware such as specialized AI chips and neuromorphic computing. This is providing the immense computational power required to efficiently train and run increasingly sophisticated AI models, including deploying AI on edge devices with limited resources.
-
-6. Adoption of AI in industry continues to expand, with companies across sectors leveraging AI for use cases like automation, predictive analytics, and personalization. Tools for MLOps and enterprise AI development platforms are helping to scale and manage the deployment of AI in production.
-
-In summary, AI technology is advancing rapidly in terms of raw capabilities while also maturing in important dimensions like responsible development and industrial-grade tooling. AI is driving breakthroughs in scientific research and enabling intelligent applications across a wide range of industries. Guided by crucial work to ensure AI systems remain robust and aligned with human values, the coming years will likely bring AI that is simultaneously far more powerful, dependable and pervasive.   ✓ Completed: analyze_research
-
-▶️  Executing task: write_report
-
-[report_writer] <thinking>
-To write a summary report on the latest AI trends, it looks like I already have a good amount of relevant analysis and insights from the previous analyze_research step. That provides an overview of key AI trends across language models, scientific applications, responsible AI, multimodal systems, hardware, and industry adoption.
-
-Since I have this content already, I don't think I need to call any additional tools. The analyze_research output gives me enough material to generate a concise summary report hitting the highlights. 
-
-So in this case, no additional tool calls are needed. I can proceed to write up the summary report directly based on the points from the research analysis.
+🟡 [report_writer] <thinking>
+To write a summary report, I have the analysis from the previous step...
 </thinking>[calling write_file] 
---- Writing to summary_report.txt ---
-Summary Report: Latest AI Trends
 
-Artificial intelligence technology is advancing rapidly across several key dimensions:
-
-- Large language models are becoming much more capable and efficient, able to ...
-
-
-
-Here is the summary report on the latest AI trends, based on the research and analysis:
-
-<file_content>
-Summary Report: Latest AI Trends
-
-Artificial intelligence technology is advancing rapidly across several key dimensions:
-
-- Large language models are becoming much more capable and efficient, able to perform a wider range of natural language tasks with less training data. Research is focused on further improving their controllability and adaptability.
-
-- AI is accelerating scientific discovery by uncovering insights from large datasets, with transformative impact in fields like drug development, materials science, and climate modeling. 
-
-- There is growing emphasis on developing responsible AI systems that are explainable, fair, private, secure, and aligned with human values. This involves both technical approaches and crucial interdisciplinary work across ethics, policy, and social impact.
-
-- Multimodal AI that can understand and generate content across text, images, video and audio is an emerging frontier, with generative models hinting at the multimedia AI capabilities that may soon be possible.
-
-- Rapid progress in specialized AI hardware is providing the immense computational power required to efficiently train and run increasingly sophisticated models, including deploying AI on edge devices.
-
-- Adoption of AI in industry continues to expand across sectors for use cases like automation, analytics, and personalization. MLOps tools and enterprise AI platforms are helping to scale and manage AI in production.
-
-In summary, AI is advancing quickly in raw capabilities while also maturing in important dimensions like responsible development and industrial-grade tooling. It is driving breakthroughs in science and enabling intelligent applications across industries. Guided by work to ensure AI systems remain robust and beneficial, the coming years will likely bring AI that is simultaneously far more powerful, dependable and pervasive.
-</file_content>
-
-The full report has been written to the file summary_report.txt. Let me know if you need anything else!   ✓ Completed: write_report
+The full report has been written to summary_report.txt.
+   ✓ Completed: 🟡 write_report
 
 ----------------------------------------
 🏁 EXECUTION COMPLETE
@@ -343,6 +285,8 @@ In summary, AI is advancing quickly in raw capabilities while also maturing in i
 ✅ SWARM COMPLETED SUCCESSFULLY
 ============================================================
 ```
+
+> **Note:** The colored circles (🔵🟢🟡) represent ANSI color codes in your terminal. Each agent gets a unique color for easy visual tracking during execution.
 
 ## Custom Event Handling
 
