@@ -301,7 +301,7 @@ def build_swarm(
             name=definition.name,
             system_prompt=definition.build_system_prompt(),
             model=model,
-            tools=tools if tools else None,
+            tools=tools if tools else None,  # type: ignore[arg-type]
             callback_handler=callback_handler,
         )
 
@@ -599,6 +599,7 @@ class DynamicSwarm:
             # Orchestrator Phase 3: Generate Final Response
             # Uses the SAME orchestrator agent from planning (continued conversation)
             # =================================================================
+            assert planning_result.orchestrator is not None, "Orchestrator should exist after successful planning"
             final_response = await self._run_completion(
                 query, config, execution_result, 
                 orchestrator=planning_result.orchestrator

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
 
@@ -263,7 +263,7 @@ def _filter_internal_tags(text: str) -> str:
     return _INTERNAL_TAG_PATTERN.sub('', text)
 
 
-def create_colored_callback_handler(color: str, agent_name: str):
+def create_colored_callback_handler(color: str, agent_name: str) -> Callable[..., None]:
     """Create a callback handler that prints agent output with a specific color.
     
     This ensures all output from a specific agent (text, reasoning, tool calls)
