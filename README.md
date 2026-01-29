@@ -4,13 +4,26 @@ Dynamic multi-agent orchestration for [Strands Agents](https://github.com/strand
 
 Given a query, the swarm automatically plans the workflow, spawns specialized sub-agents, and executes tasks with dependencies.
 
+## What This Package Does
+
+**DynamicSwarm** is the unique value here: an LLM-driven orchestrator that automatically designs and executes multi-agent workflows from natural language queries.
+
+The orchestrator handles three main responsibilities:
+1. **Planning and Creating Subagents** - Analyze the task and spawn specialized agents
+2. **Assigning Tasks** - Create and assign tasks to the spawned agents with dependencies
+3. **Generating Final Response** - Synthesize results into a cohesive response
+
+For **static multi-agent workflows**, use the official Strands SDK directly:
+- [`strands.multiagent.swarm.Swarm`](https://github.com/strands-agents/sdk-python/blob/main/src/strands/multiagent/swarm.py) - dynamic handoffs with shared context
+- [`strands.multiagent.graph.Graph`](https://github.com/strands-agents/sdk-python/blob/main/src/strands/multiagent/graph.py) - dependency-based execution
+
 ## Status
 
 > **Current version: Rollout-only**
 >
 > This release supports **rollout execution** (string-in, string-out) - ideal for inference and deployment scenarios where you need multi-agent workflows.
 >
-> **Coming soon:** RL (Reinforcement Learning) support via integration with [strands-sglang](https://github.com/strands-agents/strands-sglang), enabling token in token out (TITO) to multi agent orchestration model.
+> **Coming soon:** RL (Reinforcement Learning) support via integration with [strands-sglang](https://github.com/strands-agents/strands-sglang).
 
 ## Installation
 
@@ -25,62 +38,89 @@ from strands import tool
 from strands.models import BedrockModel
 from strands_swarms import DynamicSwarm
 
-# 1. Define tools that sub-agents can use
+# 1. Define tools that spawned agents can use
 @tool
 def search_web(query: str) -> str:
     """Search the web for information."""
-    return f"Results for: {query}"
+    # In a real implementation, this would call a search API
+    return f"[Search Results for '{query}']\n- Result 1: Latest developments..."
 
 @tool
 def analyze_data(data: str) -> str:
     """Analyze data and extract insights."""
-    return f"Analysis: {data}"
+    return f"[Analysis]\nKey insights: ..."
 
 @tool
 def write_file(path: str, content: str) -> str:
     """Write content to a file."""
-    return f"Wrote to {path}"
+    # In a real implementation, this would write to disk
+    return f"Successfully wrote {len(content)} characters to {path}"
 
 @tool
 def execute_code(code: str) -> str:
     """Execute Python code safely."""
-    return f"Executed successfully"
+    # In a real implementation, this would use a sandbox
+    return f"[Code Output]\nExecuted successfully."
 
-# 2. Define models that sub-agents can use
+# 2. Create Model instances from strands
+# You can use any strands Model: BedrockModel, AnthropicModel, LiteLLMModel, etc.
 powerful_model = BedrockModel(model_id="us.anthropic.claude-3-opus-20240229-v1:0")
 fast_model = BedrockModel(model_id="us.anthropic.claude-3-5-haiku-20241022-v1:0")
 
 # 3. Create the swarm
 swarm = DynamicSwarm(
+    # Tools that spawned agents can use
     available_tools={
         "search_web": search_web,
         "analyze_data": analyze_data,
         "write_file": write_file,
         "execute_code": execute_code,
     },
+    # Models that spawned agents can use
+    # Keys are friendly names the orchestrator uses, values are Model instances
     available_models={
         "powerful": powerful_model,
         "fast": fast_model,
     },
-    planner_model=powerful_model,
+    # Model instance for the orchestrator agent
+    orchestrator_model=powerful_model,
+    # Default model name for spawned agents if not specified
     default_agent_model="fast",
-    verbose=True,  # See live status
+    
+    # Event handling options:
+    # Option 1: verbose=True uses PrintingHookProvider (rich CLI output)
+    verbose=True,
+    # Option 2: Custom hook provider for your own logging/UI
+    # hooks=[MyCustomHookProvider()],
 )
 
-# 4. Execute - the swarm handles everything
+# 4. Execute - the orchestrator will:
+#    1. Analyze the query
+#    2. Decide what agents to spawn (researcher, writer, etc.)
+#    3. Assign tools and models to each agent
+#    4. Create tasks with proper dependencies
+#    5. Execute the workflow
 result = swarm.execute("Research the latest AI trends and write a summary report")
+
+# 5. Inspect results
+print(f"Status: {result.status}")
+print(f"Agents spawned: {result.agents_spawned}")
+print(f"Tasks created: {result.tasks_created}")
+print(f"Final response: {result.final_response}")
 ```
 
 ## How It Works
+
+![Architecture](assets/architecture.png)
 
 ```
 Query: "Research AI trends and write a summary report"
                     │
                     ▼
     ┌───────────────────────────────┐
-    │           PLANNING            │
-    │   Planner analyzes query and  │
-    │   designs the workflow        │
+    │    ORCHESTRATOR PHASE 1 & 2   │
+    │  1. Plan & Create Subagents   │
+    │  2. Assign Tasks              │
     └───────────────────────────────┘
                     │
         ┌───────────┴───────────┐
@@ -97,8 +137,15 @@ Query: "Research AI trends and write a summary report"
                     ▼
     ┌───────────────────────────────┐
     │          EXECUTION            │
-    │   Tasks run in dependency     │
-    │   order with their agents     │
+    │   Tasks run based on their    │
+    │   dependencies (Graph mode)   │
+    └───────────────────────────────┘
+                    │
+                    ▼
+    ┌───────────────────────────────┐
+    │     ORCHESTRATOR PHASE 3      │
+    │  3. Generate Final Response   │
+    │  Synthesize all task outputs  │
     └───────────────────────────────┘
                     │
                     ▼
@@ -107,9 +154,11 @@ Query: "Research AI trends and write a summary report"
 
 ## Example Output
 
-With `verbose=True`, you get rich status updates as the swarm executes. Each agent is assigned a unique color via ANSI escape codes to easily track which agent is producing output during execution.
+With `verbose=True`, you get rich status updates as the swarm executes. Each agent is assigned a unique color via ANSI escape codes for easy tracking.
 
 ```
+Query: Research the latest AI trends and write a summary report
+
 ============================================================
 🚀 DYNAMIC SWARM STARTING
 ============================================================
@@ -122,51 +171,40 @@ With `verbose=True`, you get rich status updates as the swarm executes. Each age
 📐 PHASE 1: PLANNING
 ----------------------------------------
 <thinking>
-To address this request to research AI trends and write a summary report, we will need agents to:
-1) Perform web research on the latest AI trends
-2) Analyze the research data 
-3) Write up the findings in a summary report
+To analyze this request and design a workflow, we need:
 
-For the research agent, the search_web tool will be needed. All required parameters for search_web can be inferred from the request.
+1. A researcher agent to gather information on the latest AI trends using the search_web tool
+2. A writer agent to create the summary report using the write_file tool
 
-To analyze the research, the analyze_data tool will be helpful. It looks like all required parameters can be obtained from the output of the search_web tool.
+The research should be completed before the writing can begin, so there is a dependency between the tasks. 
 
-For writing the report, the write_file tool will be used. The contents for the file can come from the analyze_data output. A filename will need to be specified.
+The search_web and write_file tools provide the key capabilities needed. The analyze_data and execute_code tools are not directly relevant for this request.
 
-In terms of dependencies, the data analysis should wait until the web research is complete. And the report writing should wait until the data analysis is done.
+The "powerful" model should be used for the agents to ensure high-quality research and writing. The "fast" model is less critical for this offline task.
 
-The "powerful" model should be sufficient for all agents.
+All the necessary tools and information are available to proceed with creating the agents and tasks to fulfill this request.
 </thinking>
 Tool #1: spawn_agent
 
 Tool #2: spawn_agent
 
-Tool #3: spawn_agent
+Tool #3: create_task
 
 Tool #4: create_task
 
-Tool #5: create_task
-
-Tool #6: create_task
-
-Tool #7: execute_swarm
+Tool #5: finalize_plan
 
 ········································
-🤖 AGENTS
+🤖 AGENTS                                            # Colors: 🔵 Blue, 🟢 Green
 ········································
 
-  🔵 [researcher]
-    Role: Perform web research on the latest AI trends
+  [researcher]
+    Role: Researches the latest AI trends
     Tools: ['search_web']
     Model: powerful
 
-  🟢 [analyst]
-    Role: Analyze the AI trends research data
-    Tools: ['analyze_data']
-    Model: powerful
-
-  🟡 [report_writer]
-    Role: Write a summary report on the latest AI trends
+  [report_writer]
+    Role: Writes a summary report on the research findings
     Tools: ['write_file']
     Model: powerful
 
@@ -174,159 +212,238 @@ Tool #7: execute_swarm
 📋 TASKS & DEPENDENCIES
 ········································
 
-  🔵 [research_ai_trends]
+  [research_ai_trends]
     Agent: researcher
-    Description: Search the web for the latest trends in artificial intelligence
+    Description: Research the latest trends and advancements in artificial intelligence
     ⚡ Can start immediately
 
-  🟢 [analyze_research]
-    Agent: analyst
-    Description: Analyze the data gathered from the web research on AI trends
-    ⏳ Waits for: research_ai_trends
-
-  🟡 [write_report]
+  [write_summary_report]
     Agent: report_writer
-    Description: Write a summary report on the latest AI trends based on the research and analysis
-    ⏳ Waits for: analyze_research
+    Description: Write a summary report on the AI trends research findings
+    ⏳ Waits for: research_ai_trends
 
 ········································
 ✅ PLAN READY
 ········································
-  Mode: graph (dependency-based)
   Entry: auto
-  Total: 3 agents, 3 tasks
+  Total: 2 agents, 2 tasks
 
 
-The workflow has been set up with the necessary agents and tasks to research AI trends and write a summary report. The key steps:
+<task_quality_reflection>
+The workflow looks well designed to handle the request of researching the latest AI trends and writing a summary report:
 
-1. Created a researcher agent to search the web for AI trends
-2. Created an analyst agent to analyze the research data  
-3. Created a report writer agent to summarize the findings
-4. Set up task dependencies so analysis waits for research, and report writing waits for analysis
-5. Executing the swarm in "graph" mode to run the tasks based on the dependencies
+- It creates two specialized agents, a researcher to gather the AI trend information using search_web, and a report writer to summarize the findings using write_file. This division of labor makes sense.
 
-Let me know if you would like me to modify the workflow in any way. Otherwise, the swarm is ready to execute to research the latest AI trends and generate the summary report.
+- The model selected for both agents is "powerful", which is appropriate to ensure high quality research and writing. Speed is less critical for this offline task.
+
+- The dependency is correctly defined, with the writing task waiting on the research task to complete first. This ensures the report will incorporate the research findings.
+
+- All the key steps are covered, from information gathering to report generation. No obvious gaps in the workflow.
+
+So in summary, the agent design, task split, tool usage and ordering all look on target to efficiently produce a quality report on the latest AI trends. The plan seems ready to execute.
+</task_quality_reflection>
+
+<task_quality_score>5</task_quality_score>
+
+<result>
+The workflow has been designed to research the latest AI trends and write a summary report:
+
+Two specialized agents were created:
+- A researcher agent to gather information on AI trends using the search_web tool
+- A report writer agent to generate the summary report based on the research, using the write_file tool
+
+The research task was assigned to the researcher agent, and the report writing task to the report writer. A dependency was defined so that report writing will begin only after the research is complete.
+
+Both agents were given the "powerful" model to ensure high quality results. The plan has been finalized and is ready to execute.
+
+Please stand by while the agents complete their assigned tasks to deliver the AI trend report you requested. Let me know if you need anything else!
+</result>
 ----------------------------------------
 ⚡ PHASE 2: EXECUTION
 ----------------------------------------
+📋 Tasks to execute: [research_ai_trends, write_summary_report]
 
-🔄 Mode: graph
-📋 Tasks to execute: [🔵 research_ai_trends, 🟢 analyze_research, 🟡 write_report]
+▶️  Executing task: research_ai_trends
+<thinking>
+To research the latest AI trends and write a summary report, the most relevant tool is the search_web function. This will allow me to search for the latest information on AI trends.
 
-▶️  Executing task: 🔵 research_ai_trends
+Required parameters:
+- query (string): The query for this would be something like "latest AI trends". This can be inferred from the user's request.
 
-🔵 [researcher] <thinking>
-To research the latest trends in AI, I will need to use the search_web tool...
-</thinking>[calling search_web] 
+No other tools are needed, as the search results should provide enough information to write a summary report on the latest AI trends.
 
-Here is a summary of the latest AI trends based on my research:
+Since I have the required parameter to call the search_web tool, I will proceed with making that API call.
+</thinking>
+Tool: search_web
 
-- Large language models like GPT-3 are becoming more powerful...
-- AI is being increasingly applied to scientific research...
-- Responsible AI is a growing focus...
-- Multimodal AI is an active area of research...
-- AI hardware is rapidly advancing...
-- Industrial application of AI continues to grow...
 
-In summary, AI capabilities are rapidly advancing while also becoming more 
-responsible, efficient, multimodal, and industrialized.
-   ✓ Completed: 🔵 research_ai_trends
+<search_quality_reflection>
+The search results provide a good overview of some of the latest AI trends and developments. There are specific examples of new AI capabilities, as well as analysis of the overall direction the field is moving in. This should provide sufficient information to write a high-level summary report on the topic. No additional searches are needed.
+</search_quality_reflection>
+<search_quality_score>4</search_quality_score>
 
-▶️  Executing task: 🟢 analyze_research
+<result>
+Summary Report: Latest AI Trends
 
-🟢 [analyst] <thinking>
-The task is to analyze the research data on AI trends...
-</thinking>[calling analyze_data] 
+Artificial intelligence continues to rapidly advance, with several key trends emerging in the field:
 
-Based on the analysis, the key trends and insights regarding AI are:
-1. Significant advancements in large language models...
-2. AI is having a transformative impact on scientific research...
-3. Growing emphasis on responsible AI systems...
-4. Multimodal AI is an emerging frontier...
-5. Rapid progress in AI hardware...
-6. Adoption of AI in industry continues to expand...
-   ✓ Completed: 🟢 analyze_research
+Trend 1: Increasing Power and Capabilities of Large Language Models 
+Some of the most impressive recent AI achievements have come from massive neural networks trained on huge text datasets, known as large language models...
 
-▶️  Executing task: 🟡 write_report
+Trend 2: Multimodal AI 
+Another major trend is AI that can understand and work with multiple modalities, like language, vision, audio, etc...
 
-🟡 [report_writer] <thinking>
-To write a summary report, I have the analysis from the previous step...
-</thinking>[calling write_file] 
+Trend 3: Robotics and Embodied AI
+While a lot of focus has been on disembodied AI that exists in the digital realm, there is also increasing interest and progress in physically embodied AI systems like robots...
 
-The full report has been written to summary_report.txt.
-   ✓ Completed: 🟡 write_report
+In summary, AI capabilities are rapidly progressing on multiple fronts - from language to multimodal understanding to real-world embodiment in robots.
+</result>   ✓ Completed: research_ai_trends
+
+▶️  Executing task: write_summary_report
+<thinking>
+The summary report on the latest AI trends has already been written based on the research findings in the previous steps. No additional tools are needed at this point...
+</thinking>
+
+<result>
+Summary Report: Latest AI Trends
+...
+</result>   ✓ Completed: write_summary_report
 
 ----------------------------------------
 🏁 EXECUTION COMPLETE
 ----------------------------------------
    Status: Status.COMPLETED
-   Agents used: 3
-   Tasks completed: 3
-Here is the summary report on the latest AI trends:
+   Agents used: 2
+   Tasks completed: 2
 
-Summary Report: Latest AI Trends
-
-Artificial intelligence technology is advancing rapidly across several key dimensions:
-
-- Large language models are becoming much more capable and efficient, able to perform a wider range of natural language tasks with less training data. Research is focused on further improving their controllability and adaptability.
-
-- AI is accelerating scientific discovery by uncovering insights from large datasets, with transformative impact in fields like drug development, materials science, and climate modeling. 
-
-- There is growing emphasis on developing responsible AI systems that are explainable, fair, private, secure, and aligned with human values. This involves both technical approaches and crucial interdisciplinary work across ethics, policy, and social impact.
-
-- Multimodal AI that can understand and generate content across text, images, video and audio is an emerging frontier, with generative models hinting at the multimedia AI capabilities that may soon be possible.
-
-- Rapid progress in specialized AI hardware is providing the immense computational power required to efficiently train and run increasingly sophisticated models, including deploying AI on edge devices.
-
-- Adoption of AI in industry continues to expand across sectors for use cases like automation, analytics, and personalization. MLOps tools and enterprise AI platforms are helping to scale and manage AI in production.
-
-In summary, AI is advancing quickly in raw capabilities while also maturing in important dimensions like responsible development and industrial-grade tooling. It is driving breakthroughs in science and enabling intelligent applications across industries. Guided by work to ensure AI systems remain robust and beneficial, the coming years will likely bring AI that is simultaneously far more powerful, dependable and pervasive.
 ============================================================
 ✅ SWARM COMPLETED SUCCESSFULLY
 ============================================================
+
+============================================================
+RESULTS
+============================================================
+Status: Status.COMPLETED
+Agents spawned: 2
+Tasks created: 2
+
+Final response:
+<thinking>
+The agents have completed their tasks of researching the latest AI trends and writing a comprehensive summary report...
+</thinking>
+
+<result>
+Here is a summary report on the latest trends in artificial intelligence:
+
+AI continues to advance rapidly across several key fronts. Large language models like GPT-3 and PaLM are exhibiting increasingly powerful natural language abilities, able to engage in open-ended dialogue, answer questions, and generate human-like text. At the same time, multimodal AI that can understand and generate content across modalities like language, images, and audio is also progressing quickly. Models like DALL-E can now produce strikingly realistic images from textual descriptions.
+
+On the embodied AI front, robots are becoming more autonomous and capable, with advances in perception, motor control and task learning. Robots are becoming better at operating in unstructured environments and adapting to novel situations.
+
+Across the board, AI systems are becoming more sophisticated, with growing power and flexibility. Organizations in all industries need to pay attention to these AI advances in order to capitalize on the opportunities and disruptive potential of the technology. The rapid pace of progress in AI looks set to continue and even accelerate in the coming years.
+</result>
 ```
 
-> **Note:** The colored circles (🔵🟢🟡) represent ANSI color codes in your terminal. Each agent gets a unique color for easy visual tracking during execution.
+## Execution Modes
+
+The orchestrator uses dependency-based execution:
+
+### Graph Mode (Default)
+Uses the SDK's `Graph` - tasks run based on dependency order with automatic output propagation. Tasks without dependencies run in parallel, while dependent tasks wait for their prerequisites to complete.
 
 ## Custom Event Handling
 
 Use strands-compatible hooks for custom event handling:
 
 ```python
+import time
 from strands_swarms import (
     DynamicSwarm,
     HookProvider,
     HookRegistry,
     AgentSpawnedEvent,
+    TaskCreatedEvent,
     TaskStartedEvent,
     TaskCompletedEvent,
+    SwarmCompletedEvent,
+    SwarmFailedEvent,
 )
 
-class MyHooks(HookProvider):
+class TimestampedHookProvider(HookProvider):
+    """Example hook provider that logs events with timestamps.
+    
+    This follows the strands HookProvider pattern for type-safe event handling.
+    """
+    
     def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
-        registry.add_callback(AgentSpawnedEvent, self.on_agent)
-        registry.add_callback(TaskStartedEvent, self.on_task_started)
-        registry.add_callback(TaskCompletedEvent, self.on_task_completed)
+        """Register callbacks for events we care about."""
+        registry.add_callback(AgentSpawnedEvent, self._on_agent_spawned)
+        registry.add_callback(TaskCreatedEvent, self._on_task_created)
+        registry.add_callback(TaskStartedEvent, self._on_task_started)
+        registry.add_callback(TaskCompletedEvent, self._on_task_completed)
+        registry.add_callback(SwarmCompletedEvent, self._on_swarm_completed)
+        registry.add_callback(SwarmFailedEvent, self._on_swarm_failed)
     
-    def on_agent(self, event: AgentSpawnedEvent) -> None:
-        print(f"Agent '{event.name}' spawned with role: {event.role}")
+    def _timestamp(self) -> str:
+        return time.strftime("%H:%M:%S")
     
-    def on_task_started(self, event: TaskStartedEvent) -> None:
-        print(f"Task '{event.name}' started")
+    def _on_agent_spawned(self, event: AgentSpawnedEvent) -> None:
+        print(f"[{self._timestamp()}] 🤖 Agent '{event.name}' spawned with role: {event.role}")
     
-    def on_task_completed(self, event: TaskCompletedEvent) -> None:
-        print(f"Task '{event.name}' completed")
+    def _on_task_created(self, event: TaskCreatedEvent) -> None:
+        deps = event.depends_on
+        print(f"[{self._timestamp()}] 📋 Task '{event.name}' created" + (f" (depends on: {deps})" if deps else ""))
+    
+    def _on_task_started(self, event: TaskStartedEvent) -> None:
+        print(f"[{self._timestamp()}] ▶️  Task '{event.name}' started")
+    
+    def _on_task_completed(self, event: TaskCompletedEvent) -> None:
+        print(f"[{self._timestamp()}] ✓  Task '{event.name}' completed")
+    
+    def _on_swarm_completed(self, event: SwarmCompletedEvent) -> None:
+        print(f"[{self._timestamp()}] 🏁 Swarm completed!")
+    
+    def _on_swarm_failed(self, event: SwarmFailedEvent) -> None:
+        print(f"[{self._timestamp()}] ❌ Swarm failed: {event.error}")
 
-swarm = DynamicSwarm(..., hooks=[MyHooks()])
+# Use custom hooks instead of verbose=True
+swarm = DynamicSwarm(
+    available_tools={...},
+    available_models={...},
+    hooks=[TimestampedHookProvider()],
+)
+```
+
+## Using the SDK Directly
+
+For static workflows where you know the agents and structure upfront, use the Strands SDK directly:
+
+```python
+from strands import Agent
+from strands.multiagent.swarm import Swarm
+from strands.multiagent.graph import GraphBuilder
+
+# Swarm - dynamic handoffs
+researcher = Agent(name="researcher", system_prompt="You research topics.")
+analyzer = Agent(name="analyzer", system_prompt="You analyze data.")
+swarm = Swarm([researcher, analyzer])
+result = swarm("Research and analyze AI trends")
+
+# Graph - dependency-based
+builder = GraphBuilder()
+builder.add_node(researcher, "research")
+builder.add_node(analyzer, "analyze")
+builder.add_edge("research", "analyze")
+graph = builder.build()
+result = graph("Research AI trends")
 ```
 
 ## Roadmap
 
 - [x] **Rollout execution** - String-in, string-out multi-agent workflows
-- [x] **Dynamic agent spawning and task planning** - Planner agent automatically creates specialized sub-agents, tasks, and dependencies from natural language
-- [x] **Event-driven execution** - Real-time monitoring with hooks and dynamic inter-task handoffs via `TaskSwarm`
+- [x] **Dynamic orchestration** - Orchestrator creates sub-agents, assigns tasks, and generates final response
+- [x] **Event-driven monitoring** - Real-time status with hooks
+- [ ] **Human-in-the-loop** - Interrupt support for human review during execution
 - [ ] **RL support** - Training and fine-tuning via strands-sglang integration
-- [ ] **Reward shaping** - Custom reward functions for multi-agent optimization
 
 ## Contributing
 

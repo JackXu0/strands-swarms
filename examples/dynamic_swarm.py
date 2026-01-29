@@ -159,8 +159,8 @@ def main():
             "powerful": powerful_model,
             "fast": fast_model,
         },
-        # Model instance for the planner agent
-        planner_model=powerful_model,
+        # Model instance for the orchestrator agent
+        orchestrator_model=powerful_model,
         # Default model name for spawned agents if not specified
         default_agent_model="fast",
         
@@ -198,7 +198,6 @@ def main():
     print(f"Status: {result.status}")
     print(f"Agents spawned: {result.agents_spawned}")
     print(f"Tasks created: {result.tasks_created}")
-    print(f"Execution mode: {result.execution_mode}")
 
     if result.final_response:
         print(f"\nFinal response:\n{result.final_response}")

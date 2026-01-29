@@ -8,12 +8,9 @@ strands.hooks.events for consistency.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
-
-if TYPE_CHECKING:
-    from .registry import DynamicRegistry
 
 
 # =============================================================================
@@ -105,13 +102,11 @@ class PlanningCompletedEvent(BaseHookEvent):
     """Event triggered when planning phase completes.
     
     Attributes:
-        mode: Execution mode (swarm or graph).
         entry_task: The entry point task, if specified.
         agents: List of agent info for summary display.
         tasks: List of task info for summary display.
     """
     
-    mode: str
     entry_task: str | None = None
     agents: list[AgentInfo] = field(default_factory=list)
     tasks: list[TaskInfo] = field(default_factory=list)
@@ -127,11 +122,9 @@ class ExecutionStartedEvent(BaseHookEvent):
     """Event triggered when the execution phase begins.
     
     Attributes:
-        mode: Execution mode (swarm or graph).
         tasks: List of task names to execute.
     """
     
-    mode: str
     tasks: list[str] = field(default_factory=list)
 
 
@@ -234,9 +227,92 @@ class SwarmFailedEvent(BaseHookEvent):
 # Default Hook Provider
 # =============================================================================
 
+# ANSI Color Constants (for consistent agent output coloring)
+AGENT_COLORS = [
+    "\033[94m",   # Blue
+    "\033[92m",   # Green
+    "\033[93m",   # Yellow
+    "\033[95m",   # Magenta
+    "\033[96m",   # Cyan
+    "\033[91m",   # Red
+]
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
 
-# Import color codes from registry for consistency
-from .registry import AGENT_COLORS, RESET, BOLD, DIM
+
+# =============================================================================
+# Colored Callback Handler
+# =============================================================================
+
+
+def create_colored_callback_handler(color: str, agent_name: str):
+    """Create a callback handler that prints agent output with a specific color.
+    
+    This ensures all output from a specific agent (text, reasoning, tool calls)
+    is displayed with the same color for easy visual tracking.
+    
+    Args:
+        color: ANSI color code to use for this agent's output.
+        agent_name: Name of the agent (for tool call headers).
+    
+    Returns:
+        A callback handler function for the strands Agent.
+    """
+    # Track which tool calls we've already printed to avoid duplicates
+    # (strands fires current_tool_use multiple times as input streams in)
+    printed_tool_ids: set[str] = set()
+    
+    def handler(**kwargs: Any) -> None:
+        nonlocal printed_tool_ids
+        
+        # Text generation events
+        if "data" in kwargs:
+            # Stream text chunk with color
+            print(f"{color}{kwargs['data']}{RESET}", end="", flush=True)
+        
+        # Tool usage events - only print once per tool call
+        elif "current_tool_use" in kwargs:
+            tool = kwargs["current_tool_use"]
+            tool_id = tool.get("toolUseId", "")
+            
+            # Skip if we've already printed this tool call
+            if tool_id in printed_tool_ids:
+                return
+            printed_tool_ids.add(tool_id)
+            
+            tool_name = tool.get("name", "unknown")
+            # Print tool header with color
+            print(f"\n{color}{BOLD}Tool: {tool_name}{RESET}")
+        
+        # Tool result events - print the input when tool completes
+        elif "tool_result" in kwargs:
+            result = kwargs["tool_result"]
+            tool_id = result.get("toolUseId", "")
+            tool_input = result.get("input")
+            
+            if tool_input:
+                if isinstance(tool_input, dict):
+                    for key, value in tool_input.items():
+                        # Truncate long values for readability
+                        str_value = str(value)
+                        if len(str_value) > 100:
+                            str_value = str_value[:100] + "..."
+                        print(f"{color}  {key}: {str_value}{RESET}")
+                else:
+                    str_input = str(tool_input)
+                    if len(str_input) > 200:
+                        str_input = str_input[:200] + "..."
+                    print(f"{color}  Input: {str_input}{RESET}")
+        
+        # Reasoning/thinking events
+        elif "reasoningText" in kwargs:
+            print(f"{color}{kwargs['reasoningText']}{RESET}", end="", flush=True)
+        elif "reasoning" in kwargs:
+            # Start of reasoning block
+            pass  # The reasoningText will contain the actual content
+    
+    return handler
 
 
 class PrintingHookProvider(HookProvider):
@@ -381,8 +457,6 @@ class PrintingHookProvider(HookProvider):
         print("\n" + "·" * 40)
         print("✅ PLAN READY")
         print("·" * 40)
-        mode_desc = "dependency-based" if event.mode == "graph" else "dynamic handoffs"
-        print(f"  Mode: {event.mode} ({mode_desc})")
         print(f"  Entry: {event.entry_task or 'auto'}")
         print(f"  Total: {len(event.agents)} agents, {len(event.tasks)} tasks")
     
@@ -390,7 +464,6 @@ class PrintingHookProvider(HookProvider):
         print("\n" + "-" * 40)
         print("⚡ PHASE 2: EXECUTION")
         print("-" * 40)
-        print(f"\n🔄 Mode: {event.mode}")
         # Color each task name by its agent
         tasks_colored = [self._colored(t, self._get_task_agent(t), bold=True) for t in event.tasks]
         print(f"📋 Tasks to execute: [{', '.join(tasks_colored)}]")
@@ -453,6 +526,13 @@ __all__ = [
     "TaskInfo",
     # Hook provider
     "PrintingHookProvider",
+    # Callback handler factory
+    "create_colored_callback_handler",
+    # Color constants
+    "AGENT_COLORS",
+    "RESET",
+    "BOLD",
+    "DIM",
     # Re-exports from strands
     "HookProvider",
     "HookRegistry",

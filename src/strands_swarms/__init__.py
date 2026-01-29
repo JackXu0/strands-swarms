@@ -1,14 +1,24 @@
 """Dynamic multi-agent orchestration for Strands Agents.
 
-Given a query, the swarm automatically plans the workflow, spawns specialized
-sub-agents, and executes tasks with dependencies.
+This package provides DynamicSwarm - an orchestrator-driven approach to multi-agent
+workflows where an LLM automatically designs and executes agent pipelines
+based on user queries.
 
-Current version: Rollout-only (string-in, string-out execution).
-RL support coming soon via strands-sglang integration.
+The orchestrator agent handles three responsibilities in a single conversation:
+1. Planning and creating subagents - Analyze the task and spawn specialized agents
+2. Assigning tasks - Create and assign tasks to the spawned agents
+3. Generating final response - Synthesize results into a cohesive response
+
+Using a single orchestrator agent for all three phases (rather than separate agents)
+provides better context - the orchestrator knows exactly what it planned and why,
+leading to more coherent final responses.
+
+For static multi-agent workflows, use the Strands SDK directly:
+- strands.multiagent.swarm.Swarm - dynamic handoffs between agents
+- strands.multiagent.graph.Graph - dependency-based execution
 
 Example:
     from strands import tool
-    from strands.models import BedrockModel
     from strands_swarms import DynamicSwarm
 
     @tool
@@ -18,20 +28,21 @@ Example:
 
     swarm = DynamicSwarm(
         available_tools={"search_web": search_web},
-        available_models={"fast": BedrockModel(model_id="...")},
         verbose=True,
     )
-    result = swarm.execute("Research AI trends")
+    result = swarm.execute("Research AI trends and summarize")
 """
 
-from .dynamic import DynamicSwarm, DynamicSwarmResult
+from .swarm import DynamicSwarm, DynamicSwarmResult
+from .orchestrator import create_orchestrator_agent
 from .events import (
-    # Events
+    # Planning/Orchestration events
     SwarmStartedEvent,
     PlanningStartedEvent,
     AgentSpawnedEvent,
     TaskCreatedEvent,
     PlanningCompletedEvent,
+    # Execution events
     ExecutionStartedEvent,
     TaskStartedEvent,
     TaskCompletedEvent,
@@ -43,8 +54,9 @@ from .events import (
     PrintingHookProvider,
 )
 
-# Re-export strands hook types for convenience
+# Re-export strands types for convenience
 from strands.hooks import HookProvider, HookRegistry
+from strands.multiagent.base import Status
 
 __version__ = "0.1.0"
 
@@ -52,6 +64,10 @@ __all__ = [
     # Main API
     "DynamicSwarm",
     "DynamicSwarmResult",
+    # Orchestrator (handles both planning AND completion in same conversation)
+    "create_orchestrator_agent",
+    # Status enum
+    "Status",
     # Events (for custom hooks)
     "SwarmStartedEvent",
     "PlanningStartedEvent",
