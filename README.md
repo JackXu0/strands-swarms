@@ -14,20 +14,9 @@ result = swarm.execute("Research AI trends and write a summary report")
 # → Spawns researcher + writer agents, handles dependencies, returns final report
 ```
 
-## Why DynamicSwarm?
+## Inspiration
 
-| Traditional Multi-Agent | DynamicSwarm |
-|------------------------|--------------|
-| Manually define agents and roles | Agents spawned based on task needs |
-| Explicitly wire dependencies | Dependencies inferred from query |
-| Configure graph/swarm structure | Structure generated automatically |
-| Update code when workflow changes | Same code, different queries |
-
-**Key capabilities:**
-- **Automatic workflow planning** — LLM analyzes your query and designs the execution plan
-- **Dynamic agent spawning** — Creates only the agents needed, with appropriate tools
-- **Dependency-aware execution** — Tasks run in parallel when possible, sequential when required
-- **Zero configuration** — No graphs to define, no handoffs to code
+This project is inspired by [Kimi K2.5's Agent Swarm](https://www.kimi.com/blog/kimi-k2-5.html) — where a trainable orchestrator dynamically creates and coordinates sub-agents without predefined roles or workflows. The goal is to build an open-source foundation for training orchestrators that can spin up agent swarms on the fly.
 
 ## How It Works
 
@@ -266,10 +255,6 @@ swarm = DynamicSwarm(..., hooks=[MyHookProvider()])
 ```
 
 Available events: `AgentSpawnedEvent`, `TaskCreatedEvent`, `TaskStartedEvent`, `TaskCompletedEvent`, `SwarmCompletedEvent`, `SwarmFailedEvent`
-
-## Inspiration
-
-This project is inspired by [Kimi K2.5's Agent Swarm](https://www.kimi.com/blog/kimi-k2-5.html) — where a trainable orchestrator dynamically creates and coordinates sub-agents without predefined roles or workflows. The goal is to build an open-source foundation for training orchestrators that can spin up agent swarms on the fly.
 
 ## Status & Roadmap
 
