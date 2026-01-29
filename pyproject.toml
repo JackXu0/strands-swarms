@@ -34,8 +34,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/strands-agents/strands-swarms"
-Issues = "https://github.com/strands-agents/strands-swarms/issues"
+Homepage = "https://github.com/JackXu0/strands-swarms"
+Issues = "https://github.com/JackXu0/strands-swarms/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/strands_swarms"]

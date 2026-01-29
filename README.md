@@ -1,6 +1,6 @@
 # strands-swarms
 
-[![CI](https://github.com/strands-agents/strands-swarms/actions/workflows/ci.yml/badge.svg)](https://github.com/strands-agents/strands-swarms/actions/workflows/ci.yml)
+[![CI](https://github.com/JackXu0/strands-swarms/actions/workflows/ci.yml/badge.svg)](https://github.com/JackXu0/strands-swarms/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/strands-swarms)](https://pypi.org/project/strands-swarms/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
