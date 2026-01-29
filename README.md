@@ -15,7 +15,7 @@ Given a query, the swarm automatically plans the workflow, spawns specialized su
 ## Installation
 
 ```bash
-pip install git+https://github.com/strands-agents/strands-swarms.git
+pip install git+https://github.com/JackXu0/strands-swarms.git
 ```
 
 ## Quick Start
