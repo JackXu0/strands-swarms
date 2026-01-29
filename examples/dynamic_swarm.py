@@ -27,9 +27,8 @@ from strands_swarms import (
 
 
 # =============================================================================
-# Tools
+# All Tools Available to Swarm
 # =============================================================================
-
 
 @tool
 def search_web(query: str) -> str:
@@ -65,7 +64,7 @@ TOOLS = {
 
 
 # =============================================================================
-# Models
+# All Models Available to Swarm
 # =============================================================================
 # Strands supports: AnthropicModel, OpenAIModel, BedrockModel, GeminiModel,
 # LiteLLMModel, OllamaModel, MistralModel, LlamaCppModel, SageMakerModel, etc.
@@ -80,7 +79,6 @@ MODELS = {
 # =============================================================================
 # Main
 # =============================================================================
-
 
 def main():
     swarm = DynamicSwarm(
@@ -107,7 +105,6 @@ def main():
 # =============================================================================
 # Hooks
 # =============================================================================
-
 
 class TimestampedHookProvider(HookProvider):
     """Logs swarm events with timestamps."""
