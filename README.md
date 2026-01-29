@@ -33,46 +33,6 @@ result = swarm.execute("Research AI trends and write a summary report")
 
 ![Architecture](assets/architecture.png)
 
-```
-Query: "Research AI trends and write a summary report"
-                         │
-                         ▼
-         ┌───────────────────────────────┐
-         │      PHASE 1: PLANNING        │
-         │    Orchestrator analyzes      │
-         │    query and designs workflow │
-         └───────────────────────────────┘
-                         │
-          ┌──────────────┴──────────────┐
-          ▼                             ▼
-    spawn_agent                   spawn_agent
-    "researcher"                  "report_writer"
-    tools: [search_web]           tools: [write_file]
-          │                             │
-          ▼                             ▼
-    create_task                   create_task
-    "research_ai_trends"          "write_summary_report"
-    depends_on: []                depends_on: [research_ai_trends]
-                         │
-                         ▼
-         ┌───────────────────────────────┐
-         │      PHASE 2: EXECUTION       │
-         │    Tasks run based on their   │
-         │    dependencies (parallel     │
-         │    when possible)             │
-         └───────────────────────────────┘
-                         │
-                         ▼
-         ┌───────────────────────────────┐
-         │   PHASE 3: FINAL RESPONSE     │
-         │   Orchestrator synthesizes    │
-         │   all task outputs            │
-         └───────────────────────────────┘
-                         │
-                         ▼
-                   Final Result
-```
-
 ## Installation
 
 ```bash
