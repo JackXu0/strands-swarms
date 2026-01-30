@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from strands import Agent
 from strands.hooks import HookProvider, HookRegistry
+from strands.hooks.events import BeforeNodeCallEvent, AfterNodeCallEvent
 from strands.multiagent.base import MultiAgentResult, Status
 from strands.multiagent.graph import Graph, GraphBuilder, GraphResult
+from strands.session.file_session_manager import FileSessionManager
 
 from .events import (
     AGENT_COLORS,
@@ -27,7 +29,24 @@ from .task import TaskManager
 
 if TYPE_CHECKING:
     from strands.models import Model
-    from strands.session import SessionManager
+
+
+@dataclass
+class SessionConfig:
+    session_id: str
+    storage_dir: str = "./.swarm_sessions"
+
+    def for_agent(self, agent_name: str) -> FileSessionManager:
+        return FileSessionManager(
+            session_id=f"{self.session_id}-{agent_name}",
+            storage_dir=self.storage_dir,
+        )
+
+    def for_graph(self) -> FileSessionManager:
+        return FileSessionManager(
+            session_id=f"{self.session_id}-graph",
+            storage_dir=self.storage_dir,
+        )
 
 
 @dataclass
@@ -163,18 +182,43 @@ class _SwarmBuildResult:
     task_manager: TaskManager
 
 
+class _TaskLifecycleHook(HookProvider):
+    """Hook provider that tracks task lifecycle via graph node execution events."""
+
+    def __init__(self, task_manager: TaskManager) -> None:
+        self._task_manager = task_manager
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
+        registry.add_callback(AfterNodeCallEvent, self._on_node_complete)
+
+    def _on_node_start(self, event: BeforeNodeCallEvent) -> None:
+        task = self._task_manager.get(event.node_id)
+        if task and task.is_pending:
+            self._task_manager.start(event.node_id)
+
+    def _on_node_complete(self, event: AfterNodeCallEvent) -> None:
+        task = self._task_manager.get(event.node_id)
+        if task and task.is_executing:
+            if hasattr(event, "error") and event.error:
+                self._task_manager.fail(event.node_id, error=str(event.error))
+            else:
+                result = getattr(event, "result", None)
+                self._task_manager.complete(event.node_id, result=result)
+
+
 def build_swarm(
     config: SwarmConfig,
     *,
     use_colored_output: bool = False,
     execution_timeout: float = 900.0,
     task_timeout: float = 300.0,
-    session_manager: SessionManager | None = None,
+    session_config: SessionConfig | None = None,
     hook_registry: HookRegistry | None = None,
 ) -> _SwarmBuildResult:
     # Build all agents first, independent of tasks
     agents: dict[str, Agent] = {}
-    
+
     def build_agent(agent_name: str) -> Agent:
         definition = config.agents.get(agent_name)
         if not definition:
@@ -190,12 +234,16 @@ def build_swarm(
 
         system_prompt = definition.build_system_prompt()
 
+        # Create per-agent session manager for isolated memory
+        agent_session = session_config.for_agent(agent_name) if session_config else None
+
         return Agent(
             name=definition.name,
             system_prompt=system_prompt,
             model=model,
             tools=tools if tools else None,  # type: ignore[arg-type]
             callback_handler=callback_handler,
+            session_manager=agent_session,
         )
 
     # Build each unique agent once
@@ -231,8 +279,12 @@ def build_swarm(
     builder.set_execution_timeout(execution_timeout)
     builder.set_node_timeout(task_timeout)
 
-    if session_manager:
-        builder.set_session_manager(session_manager)
+    # Set graph-level session for execution state tracking
+    if session_config:
+        builder.set_session_manager(session_config.for_graph())
+
+    # Register task lifecycle hook to track start/complete via graph execution
+    builder.set_hook_providers([_TaskLifecycleHook(task_manager)])
 
     return _SwarmBuildResult(
         graph=builder.build(),
@@ -303,7 +355,8 @@ class DynamicSwarm:
         max_iterations: int = 20,
         execution_timeout: float = 900.0,
         task_timeout: float = 300.0,
-        session_manager: SessionManager | None = None,
+        session_id: str | None = None,
+        session_storage_dir: str = "./.swarm_sessions",
         hooks: list[HookProvider] | None = None,
         verbose: bool = False,
     ) -> None:
@@ -314,13 +367,19 @@ class DynamicSwarm:
         self._max_iterations = max_iterations
         self._execution_timeout = execution_timeout
         self._task_timeout = task_timeout
-        self._session_manager = session_manager
-        
+
+        # Create session config for per-agent memory persistence
+        self._session_config = (
+            SessionConfig(session_id=session_id, storage_dir=session_storage_dir)
+            if session_id
+            else None
+        )
+
         self._hook_registry = HookRegistry()
-        
+
         if verbose:
             self._hook_registry.add_hook(PrintingHookProvider())
-        
+
         if hooks:
             for hook in hooks:
                 self._hook_registry.add_hook(hook)
@@ -382,37 +441,16 @@ class DynamicSwarm:
                 use_colored_output=use_colored_output,
                 execution_timeout=self._execution_timeout,
                 task_timeout=self._task_timeout,
-                session_manager=self._session_manager,
+                session_config=self._session_config,
                 hook_registry=self._hook_registry,
             )
 
             self._emit(ExecutionStartedEvent(
                 tasks=list(config.tasks.keys()),
             ))
-            
-            # Track task execution with TaskManager
-            task_manager = build_result.task_manager
-            
-            # Start all pending tasks (graph will handle actual execution order)
-            for task_name in config.tasks.keys():
-                task = task_manager.get(task_name)
-                if task and task.is_pending:
-                    task_manager.start(task_name)
-            
+
+            # Graph execution handles task lifecycle via _TaskLifecycleHook
             execution_result = await build_result.graph.invoke_async()
-            
-            # Update task statuses based on execution results
-            if execution_result and hasattr(execution_result, "results"):
-                for task_name, node_result in execution_result.results.items():
-                    task = task_manager.get(task_name)
-                    if task and task.is_executing:
-                        if node_result.status == Status.COMPLETED:
-                            task_manager.complete(task_name, result=node_result.result)
-                        elif node_result.status == Status.FAILED:
-                            error_msg = str(node_result.result) if node_result.result else "Task failed"
-                            task_manager.fail(task_name, error=error_msg)
-                        elif node_result.status == Status.INTERRUPTED:
-                            task_manager.interrupt(task_name, reason="Execution interrupted")
 
             self._emit(ExecutionCompletedEvent(
                 status=str(execution_result.status) if execution_result else "FAILED",

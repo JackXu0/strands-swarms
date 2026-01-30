@@ -26,11 +26,21 @@ Example:
         '''Search the web.'''
         return f"Results for: {query}"
 
+    # Basic usage (stateless agents)
     swarm = DynamicSwarm(
         available_tools={"search_web": search_web},
         verbose=True,
     )
     result = swarm.execute("Research AI trends and summarize")
+
+    # With session persistence (agents maintain memory across tasks)
+    swarm_with_memory = DynamicSwarm(
+        available_tools={"search_web": search_web},
+        session_id="project-alpha",  # Enables per-agent session persistence
+        session_storage_dir="./.swarm_sessions",
+        verbose=True,
+    )
+    result = swarm_with_memory.execute("Research AI trends")
 """
 
 # Re-export strands types for convenience
@@ -57,7 +67,7 @@ from .events import (
     TaskStartedEvent,
 )
 from .orchestrator import create_orchestrator_agent
-from .swarm import DynamicSwarm, DynamicSwarmResult
+from .swarm import DynamicSwarm, DynamicSwarmResult, SessionConfig
 from .task import Task, TaskManager
 
 __version__ = "0.1.1"
@@ -66,6 +76,7 @@ __all__ = [
     # Main API
     "DynamicSwarm",
     "DynamicSwarmResult",
+    "SessionConfig",
     # Orchestrator (handles both planning AND completion in same conversation)
     "create_orchestrator_agent",
     # Task lifecycle
