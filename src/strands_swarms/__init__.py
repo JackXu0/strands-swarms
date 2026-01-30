@@ -53,10 +53,12 @@ from .events import (
     TaskCompletedEvent,
     TaskCreatedEvent,
     TaskFailedEvent,
+    TaskInterruptedEvent,
     TaskStartedEvent,
 )
 from .orchestrator import create_orchestrator_agent
 from .swarm import DynamicSwarm, DynamicSwarmResult
+from .task import Task, TaskManager
 
 __version__ = "0.1.1"
 
@@ -66,7 +68,9 @@ __all__ = [
     "DynamicSwarmResult",
     # Orchestrator (handles both planning AND completion in same conversation)
     "create_orchestrator_agent",
-    # Status enum
+    # Task lifecycle
+    "Task",
+    "TaskManager",
     "Status",
     # Events (for custom hooks)
     "SwarmStartedEvent",
@@ -78,6 +82,7 @@ __all__ = [
     "TaskStartedEvent",
     "TaskCompletedEvent",
     "TaskFailedEvent",
+    "TaskInterruptedEvent",
     "ExecutionCompletedEvent",
     "SwarmCompletedEvent",
     "SwarmFailedEvent",

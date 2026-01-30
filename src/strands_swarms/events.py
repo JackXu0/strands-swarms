@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
+from strands.multiagent.base import Status
 
 # =============================================================================
 # Planning Events
@@ -134,11 +135,9 @@ class TaskStartedEvent(BaseHookEvent):
     
     Attributes:
         name: The task name.
-        agent_role: Role of the agent executing this task.
     """
     
     name: str
-    agent_role: str | None = None
 
 
 @dataclass
@@ -147,9 +146,11 @@ class TaskCompletedEvent(BaseHookEvent):
     
     Attributes:
         name: The task name.
+        result: Optional result from task execution.
     """
     
     name: str
+    result: Any = None
 
     @property
     def should_reverse_callbacks(self) -> bool:
@@ -168,6 +169,24 @@ class TaskFailedEvent(BaseHookEvent):
     
     name: str
     error: str | None = None
+
+    @property
+    def should_reverse_callbacks(self) -> bool:
+        """Cleanup events should reverse callback order."""
+        return True
+
+
+@dataclass
+class TaskInterruptedEvent(BaseHookEvent):
+    """Event triggered when a task is interrupted.
+    
+    Attributes:
+        name: The task name.
+        reason: Optional reason for interruption.
+    """
+    
+    name: str
+    reason: str | None = None
 
     @property
     def should_reverse_callbacks(self) -> bool:
@@ -399,6 +418,7 @@ class PrintingHookProvider(HookProvider):
         registry.add_callback(TaskStartedEvent, self._on_task_started)
         registry.add_callback(TaskCompletedEvent, self._on_task_completed)
         registry.add_callback(TaskFailedEvent, self._on_task_failed)
+        registry.add_callback(TaskInterruptedEvent, self._on_task_interrupted)
         registry.add_callback(ExecutionCompletedEvent, self._on_execution_completed)
         
         # Completion events
@@ -496,9 +516,6 @@ class PrintingHookProvider(HookProvider):
         agent = self._get_task_agent(event.name)
         task_str = self._colored(event.name, agent, bold=True)
         print(f"\n▶️  Executing task: {task_str}")
-        if event.agent_role:
-            role_str = self._colored(event.agent_role, agent)
-            print(f"   Agent role: {role_str}")
     
     def _on_task_completed(self, event: TaskCompletedEvent) -> None:
         agent = self._get_task_agent(event.name)
@@ -506,10 +523,16 @@ class PrintingHookProvider(HookProvider):
         print(f"   ✓ Completed: {task_str}")
     
     def _on_task_failed(self, event: TaskFailedEvent) -> None:
-        task_str = self._colored(event.name, self._get_task_agent(event.name))
+        agent = self._get_task_agent(event.name)
+        task_str = self._colored(event.name, agent)
         print(f"   ❌ Failed: {task_str}")
         if event.error:
             print(f"   Error: {event.error}")
+    
+    def _on_task_interrupted(self, event: TaskInterruptedEvent) -> None:
+        agent = self._get_task_agent(event.name)
+        task_str = self._colored(event.name, agent)
+        print(f"   ⏸️  Interrupted: {task_str}")
     
     def _on_execution_completed(self, event: ExecutionCompletedEvent) -> None:
         print("\n" + "-" * 40)
@@ -542,6 +565,7 @@ __all__ = [
     "TaskStartedEvent",
     "TaskCompletedEvent",
     "TaskFailedEvent",
+    "TaskInterruptedEvent",
     "ExecutionCompletedEvent",
     "SwarmCompletedEvent",
     "SwarmFailedEvent",
@@ -560,4 +584,5 @@ __all__ = [
     # Re-exports from strands
     "HookProvider",
     "HookRegistry",
+    "Status",
 ]
