@@ -25,8 +25,6 @@ TERMINAL_STATUSES: set[Status] = {Status.COMPLETED, Status.FAILED, Status.INTERR
 
 @dataclass
 class Task:
-    """Runtime state for a task in the swarm workflow."""
-
     name: str
     agent: str
     description: str | None = None
@@ -101,8 +99,6 @@ class Task:
 
 
 class TaskManager:
-    """Manages task lifecycle during swarm execution."""
-
     def __init__(self, hook_registry: HookRegistry | None = None) -> None:
         self._tasks: dict[str, Task] = {}
         self._hooks = hook_registry
