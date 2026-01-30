@@ -30,8 +30,6 @@ from .events import (
     SwarmCompletedEvent,
     SwarmFailedEvent,
     SwarmStartedEvent,
-    TaskCompletedEvent,
-    TaskStartedEvent,
     create_colored_callback_handler,
 )
 
@@ -257,6 +255,14 @@ class SwarmConfig:
         return "\n".join(lines)
 
 
+@dataclass
+class _SwarmBuildResult:
+    """Result from building a swarm, including the graph and agent tracking."""
+
+    graph: Graph
+    task_agents: dict[str, Agent]  # task_name -> Agent instance
+
+
 def build_swarm(
     config: SwarmConfig,
     *,
@@ -264,7 +270,7 @@ def build_swarm(
     execution_timeout: float = 900.0,
     task_timeout: float = 300.0,
     session_manager: SessionManager | None = None,
-) -> Graph:
+) -> _SwarmBuildResult:
     """Build a complete Graph from a swarm configuration.
 
     Creates all agents from registered definitions and wires up the
@@ -278,16 +284,20 @@ def build_swarm(
         session_manager: Optional session manager for persistence.
 
     Returns:
-        Configured Graph ready for execution.
+        _SwarmBuildResult containing the graph and agent/model tracking.
 
     Raises:
         ValueError: If no tasks are registered.
     """
-    def build_agent(agent_name: str) -> Agent:
+    task_agents: dict[str, Agent] = {}
+
+    def build_agent(agent_name: str, task_name: str) -> Agent:
         """Build an Agent from a registered definition."""
         definition = config.agents.get(agent_name)
         if not definition:
             raise ValueError(f"Agent '{agent_name}' not found")
+
+        task_def = config.tasks.get(task_name)
 
         tools = [config.available_tools[t] for t in definition.tools]
         model_name = definition.model or config.default_model
@@ -297,13 +307,20 @@ def build_swarm(
         if use_colored_output and definition.color:
             callback_handler = create_colored_callback_handler(definition.color, agent_name)
 
-        return Agent(
+        # Build system prompt with task description included
+        system_prompt = definition.build_system_prompt()
+        if task_def and task_def.description:
+            system_prompt += f"\n\n## Your Task\n{task_def.description}"
+
+        agent = Agent(
             name=definition.name,
-            system_prompt=definition.build_system_prompt(),
+            system_prompt=system_prompt,
             model=model,
             tools=tools if tools else None,  # type: ignore[arg-type]
             callback_handler=callback_handler,
         )
+        task_agents[task_name] = agent
+        return agent
 
     if not config.tasks:
         raise ValueError("No tasks registered - cannot build swarm")
@@ -312,7 +329,7 @@ def build_swarm(
 
     # Build agents and add as nodes
     for task_name, task_def in config.tasks.items():
-        builder.add_node(build_agent(task_def.agent), task_name)
+        builder.add_node(build_agent(task_def.agent, task_name), task_name)
 
     # Add edges based on dependencies
     for task_name, task_def in config.tasks.items():
@@ -331,7 +348,10 @@ def build_swarm(
     if session_manager:
         builder.set_session_manager(session_manager)
 
-    return builder.build()
+    return _SwarmBuildResult(
+        graph=builder.build(),
+        task_agents=task_agents,
+    )
 
 
 # =============================================================================
@@ -571,7 +591,7 @@ class DynamicSwarm:
 
             # Build the swarm graph (create sub-agents, wire up task dependencies)
             use_colored_output = self._hook_registry.has_callbacks()
-            graph = build_swarm(
+            build_result = build_swarm(
                 config,
                 use_colored_output=use_colored_output,
                 execution_timeout=self._execution_timeout,
@@ -586,7 +606,7 @@ class DynamicSwarm:
                 tasks=list(config.tasks.keys()),
             ))
             
-            execution_result = await self._execute_graph(query, graph, config)
+            execution_result = await build_result.graph.invoke_async()
 
             # Emit execution completion event
             self._emit(ExecutionCompletedEvent(
@@ -700,33 +720,6 @@ class DynamicSwarm:
             return None
         except Exception:
             return None
-
-    async def _execute_graph(
-        self, query: str, graph: Graph, state: SwarmConfig
-    ) -> GraphResult:
-        """Execute a pre-built Graph with dependency-based execution."""
-        if self._hook_registry.has_callbacks():
-            result = None
-            current_task = None
-            async for event in graph.stream_async(query):
-                task_name = event.get("node_id")
-                if task_name and task_name != current_task:
-                    if current_task:
-                        self._emit(TaskCompletedEvent(name=current_task))
-                    agent_def = state.agents.get(task_name)
-                    self._emit(TaskStartedEvent(
-                        name=task_name,
-                        agent_role=agent_def.role if agent_def else None,
-                    ))
-                    current_task = task_name
-                if "result" in event:
-                    result = event["result"]
-            if current_task:
-                self._emit(TaskCompletedEvent(name=current_task))
-            return result if result else await graph.invoke_async(query)
-        else:
-            return await graph.invoke_async(query)
-
 
 @dataclass
 class _PlanningResult:
