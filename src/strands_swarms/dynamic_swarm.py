@@ -359,7 +359,8 @@ The workflow has completed. Here are the results from each task:
 
 ORIGINAL REQUEST: {query}
 
-Synthesize these results into a final response. Be direct - deliver the answer without mentioning the workflow or agents."""
+Synthesize these results into a final response. \
+Be direct - deliver the answer without mentioning the workflow or agents."""
 
 
 # =============================================================================

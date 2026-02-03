@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any
 
 from strands import Agent, tool
 
@@ -44,7 +44,7 @@ Request: "Research AI trends and write a summary"
 Keep it simple - only create what's necessary."""
 
 
-def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Callable[..., str]]:
+def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Any]:
     """Create orchestrator tools that capture the SwarmDefinition via closure."""
     from .definition import AgentDefinition, TaskDefinition
 

@@ -47,25 +47,6 @@ Example:
 from strands.hooks import HookProvider, HookRegistry
 from strands.multiagent.base import Status
 
-from .events import (
-    AgentSpawnedEvent,
-    ExecutionCompletedEvent,
-    # Execution events
-    ExecutionStartedEvent,
-    PlanningCompletedEvent,
-    PlanningStartedEvent,
-    # Hook provider
-    PrintingHookProvider,
-    SwarmCompletedEvent,
-    SwarmFailedEvent,
-    # Planning/Orchestration events
-    SwarmStartedEvent,
-    TaskCompletedEvent,
-    TaskCreatedEvent,
-    TaskFailedEvent,
-    TaskInterruptedEvent,
-    TaskStartedEvent,
-)
 from .definition import (
     AgentDefinition,
     DynamicSwarmCapabilities,
@@ -74,6 +55,22 @@ from .definition import (
     TaskDefinition,
 )
 from .dynamic_swarm import DynamicSwarm, DynamicSwarmResult, build_swarm
+from .events import (
+    AgentSpawnedEvent,
+    ExecutionCompletedEvent,
+    ExecutionStartedEvent,
+    PlanningCompletedEvent,
+    PlanningStartedEvent,
+    PrintingHookProvider,
+    SwarmCompletedEvent,
+    SwarmFailedEvent,
+    SwarmStartedEvent,
+    TaskCompletedEvent,
+    TaskCreatedEvent,
+    TaskFailedEvent,
+    TaskInterruptedEvent,
+    TaskStartedEvent,
+)
 from .orchestrator import create_orchestrator_agent
 from .task import Task, TaskManager
 

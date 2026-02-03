@@ -10,7 +10,6 @@ from strands.multiagent.base import Status
 
 from .events import (
     TaskCompletedEvent,
-    TaskCreatedEvent,
     TaskFailedEvent,
     TaskInterruptedEvent,
     TaskStartedEvent,
