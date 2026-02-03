@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 from strands import Agent
@@ -16,9 +16,11 @@ from strands.multiagent.graph import (
 )
 
 from .definition import (
+    AgentDefinition,
     DynamicSwarmCapabilities,
     SessionConfig,
     SwarmDefinition,
+    TaskDefinition,
 )
 
 if TYPE_CHECKING:
@@ -115,8 +117,8 @@ class DynamicSwarm:
                 "result": DynamicSwarmResult(
                     status=Status.FAILED,
                     planning_output=planning_result.output,
-                    agents_spawned=len(definition.sub_agents),
-                    tasks_created=len(definition.tasks),
+                    agents_spawned=list(definition.sub_agents.values()),
+                    tasks_created=list(definition.tasks.values()),
                     error=error,
                 ),
             }
@@ -130,8 +132,8 @@ class DynamicSwarm:
                 "result": DynamicSwarmResult(
                     status=Status.FAILED,
                     planning_output=planning_result.output,
-                    agents_spawned=len(definition.sub_agents),
-                    tasks_created=0,
+                    agents_spawned=list(definition.sub_agents.values()),
+                    tasks_created=[],
                     error=error,
                 ),
             }
@@ -177,8 +179,8 @@ class DynamicSwarm:
                     planning_output=planning_result.output,
                     execution_result=execution_result,
                     final_response=None,
-                    agents_spawned=len(definition.sub_agents),
-                    tasks_created=len(definition.tasks),
+                    agents_spawned=list(definition.sub_agents.values()),
+                    tasks_created=list(definition.tasks.values()),
                     error=execution_error,
                 ),
             }
@@ -194,8 +196,8 @@ class DynamicSwarm:
                     planning_output=planning_result.output,
                     execution_result=None,
                     final_response=None,
-                    agents_spawned=len(definition.sub_agents),
-                    tasks_created=len(definition.tasks),
+                    agents_spawned=list(definition.sub_agents.values()),
+                    tasks_created=list(definition.tasks.values()),
                     error=error,
                 ),
             }
@@ -216,8 +218,8 @@ class DynamicSwarm:
             planning_output=planning_result.output,
             execution_result=execution_result,
             final_response=final_response,
-            agents_spawned=len(definition.sub_agents),
-            tasks_created=len(definition.tasks),
+            agents_spawned=list(definition.sub_agents.values()),
+            tasks_created=list(definition.tasks.values()),
             error=(
                 None
                 if execution_result.status == Status.COMPLETED
@@ -292,9 +294,17 @@ class DynamicSwarmResult:
     planning_output: str | None = None
     execution_result: GraphResult | None = None
     final_response: str | None = None
-    agents_spawned: int = 0
-    tasks_created: int = 0
+    agents_spawned: list[AgentDefinition] = field(default_factory=list)
+    tasks_created: list[TaskDefinition] = field(default_factory=list)
     error: str | None = None
+
+    @property
+    def agents_spawned_count(self) -> int:
+        return len(self.agents_spawned)
+
+    @property
+    def tasks_created_count(self) -> int:
+        return len(self.tasks_created)
 
     def get_output(self, task_name: str) -> Any | None:
         if self.execution_result and hasattr(self.execution_result, "results"):
@@ -332,25 +342,35 @@ def build_swarm(
 
     capabilities = definition.capabilities
 
-    # Build strands Agent instances from definitions
-    agents: dict[str, Agent] = {}
+    # Build per-agent config from definitions.
+    #
+    # Note: strands Graph requires each node executor to be a unique object
+    # instance, so we use these configs to create a fresh Agent per task.
+    agent_configs: dict[str, dict[str, Any]] = {}
     for name, agent_def in definition.sub_agents.items():
         tools = [capabilities.available_tools[t] for t in agent_def.tools]
         model_name = agent_def.model or capabilities.default_model
         model = capabilities.available_models.get(model_name) if model_name else None
-
-        agents[name] = Agent(
-            name=name,
-            system_prompt=agent_def.build_system_prompt(),
-            model=model,
-            tools=tools or None,  # type: ignore[arg-type]
-            callback_handler=None,
-        )
+        agent_configs[name] = {
+            "system_prompt": agent_def.build_system_prompt(),
+            "model": model,
+            "tools": tools or None,
+        }
 
     # Build the execution graph
     builder = GraphBuilder()
     for task_name, task in definition.tasks.items():
-        builder.add_node(agents[task.agent], task_name)
+        agent_config = agent_configs[task.agent]
+        builder.add_node(
+            Agent(
+                name=task.agent,
+                system_prompt=agent_config["system_prompt"],
+                model=agent_config["model"],
+                tools=agent_config["tools"],  # type: ignore[arg-type]
+                callback_handler=None,
+            ),
+            task_name,
+        )
     for task_name, task in definition.tasks.items():
         for dep_name in task.depends_on:
             builder.add_edge(dep_name, task_name)

@@ -74,8 +74,13 @@ swarm = DynamicSwarm(
 result = swarm.execute("Research the latest AI trends and write a summary report")
 
 print(f"Status: {result.status}")
-print(f"Agents spawned: {result.agents_spawned}")
-print(f"Tasks created: {result.tasks_created}")
+print(f"Agents spawned: {result.agents_spawned_count}")
+for agent in result.agents_spawned:
+    print(f"  - {agent.name}: {agent.role}")
+print(f"Tasks created: {result.tasks_created_count}")
+for task in result.tasks_created:
+    depends = f" (depends: [{', '.join(task.depends_on)}])" if task.depends_on else ""
+    print(f"  - {task.name} -> {task.agent}{depends}")
 print(f"Final response: {result.final_response}")
 ```
 
@@ -85,6 +90,9 @@ Use `stream_async()` to capture the full execution trajectory (planning + graph 
 
 By default, `DynamicSwarm` filters out per-node token/tool streaming events (type: `multiagent_node_stream`)
 to avoid interleaved output when tasks run in parallel. Pass `include_subagent_events=True` to include them.
+
+The provided example script prints a human-friendly trajectory with **ANSI colors per sub-agent**
+(agent/task lines, tool calls, and final task outputs). Colors are shown in a real terminal; set `NO_COLOR=1` to disable.
 
 ```python
 import asyncio
@@ -105,6 +113,9 @@ asyncio.run(run())
 <summary>Example output (see examples/dynamic_swarm.py)</summary>
 
 ```
+Query: Research the latest AI trends and write a summary report
+============================================================
+
 ============================================================
 DYNAMIC SWARM STARTING
 ============================================================
@@ -120,14 +131,13 @@ PHASE 1: PLANNING
 ········································
 PLAN READY
 ········································
-
 Agents (2):
-  - researcher: Researches the latest AI trends
-  - report_writer: Writes a summary report on the research findings
+  - researcher: AI trends researcher
+  - writer: Summary report writer
 
 Tasks (2):
   - research_ai_trends -> researcher
-  - write_summary_report -> report_writer (depends: ['research_ai_trends'])
+  - write_summary_report -> writer (depends: [research_ai_trends])
 
 ----------------------------------------
 PHASE 2: EXECUTION
@@ -136,17 +146,51 @@ PHASE 2: EXECUTION
 ----------------------------------------
 TASK STATUS
 ----------------------------------------
+researcher: research_ai_trends [pending (ready)]
+writer: write_summary_report [pending (blocked: research_ai_trends)]
+
+
+----------------------------------------
+TASK STATUS
+----------------------------------------
 researcher: research_ai_trends [executing]
-report_writer: write_summary_report [pending (blocked: research_ai_trends)]
+writer: write_summary_report [pending (blocked: research_ai_trends)]
+
+researcher: Tool #1: search_web
+researcher: Tool #2: search_web
+
+researcher: research_ai_trends
+AI Trends Summary Report 2024
+...
+
+----------------------------------------
+TASK STATUS
+----------------------------------------
+researcher: research_ai_trends [completed]
+writer: write_summary_report [executing]
+
+writer: Tool #1: write_file
+
+writer: write_summary_report
+I have created a markdown-formatted summary report based on the AI trends research...
 
 ----------------------------------------
 EXECUTION COMPLETE
 ----------------------------------------
 Status: completed
 
+Final response:
+Here is the summary report on AI trends for 2024:
+...
+
 ============================================================
-Status: completed
-============================================================
+Status: Status.COMPLETED
+Agents spawned: 2
+  - researcher: AI trends researcher
+  - writer: Summary report writer
+Tasks created: 2
+  - research_ai_trends -> researcher
+  - write_summary_report -> writer (depends: [research_ai_trends])
 ```
 
 </details>
