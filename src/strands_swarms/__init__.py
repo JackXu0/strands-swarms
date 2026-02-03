@@ -66,14 +66,15 @@ from .events import (
     TaskInterruptedEvent,
     TaskStartedEvent,
 )
-from .orchestrator import create_orchestrator_agent
-from .swarm import (
-    DynamicSwarm,
-    DynamicSwarmResult,
-    SwarmInstance,
-    SessionConfig,
+from .definition import (
+    AgentDefinition,
     DynamicSwarmCapabilities,
+    SessionConfig,
+    SwarmDefinition,
+    TaskDefinition,
 )
+from .dynamic_swarm import DynamicSwarm, DynamicSwarmResult, build_swarm
+from .orchestrator import create_orchestrator_agent
 from .task import Task, TaskManager
 
 __version__ = "0.1.1"
@@ -82,11 +83,14 @@ __all__ = [
     # Main API
     "DynamicSwarm",
     "DynamicSwarmResult",
-    "SessionConfig",
-    # Config types
+    "build_swarm",
+    # Definition types
     "DynamicSwarmCapabilities",
-    "SwarmInstance",
-    # Orchestrator (handles both planning AND completion in same conversation)
+    "SwarmDefinition",
+    "AgentDefinition",
+    "TaskDefinition",
+    "SessionConfig",
+    # Orchestrator
     "create_orchestrator_agent",
     # Task lifecycle
     "Task",

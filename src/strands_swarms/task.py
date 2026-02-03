@@ -19,7 +19,7 @@ from .events import (
 if TYPE_CHECKING:
     from strands.hooks.registry import HookRegistry
 
-    from .swarm import TaskDefinition
+    from .definition import TaskDefinition
 
 
 TERMINAL_STATUSES: set[Status] = {Status.COMPLETED, Status.FAILED, Status.INTERRUPTED}
