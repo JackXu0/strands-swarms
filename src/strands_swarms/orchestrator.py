@@ -11,7 +11,7 @@ from .events import AgentSpawnedEvent, PlanningCompletedEvent, TaskCreatedEvent
 if TYPE_CHECKING:
     from strands.models import Model
 
-    from .swarm import SwarmDefinition
+    from .swarm import SwarmInstance
 
 
 # --- System Prompt ---
@@ -96,8 +96,8 @@ Now analyze the request and build the workflow.
 """
 
 
-def create_orchestrator_tools(context: "SwarmDefinition") -> list[Callable[..., str]]:
-    """Create orchestrator tools that capture the SwarmDefinition via closure."""
+def create_orchestrator_tools(context: "SwarmInstance") -> list[Callable[..., str]]:
+    """Create orchestrator tools that capture the SwarmInstance via closure."""
     from .swarm import AgentDefinition, TaskDefinition
 
     @tool
@@ -197,7 +197,7 @@ def create_orchestrator_tools(context: "SwarmDefinition") -> list[Callable[..., 
 
 
 def create_orchestrator_agent(
-    context: "SwarmDefinition",
+    context: "SwarmInstance",
     model: "Model | None" = None,
 ) -> Agent:
     """Create orchestrator agent that plans, creates sub-agents, assigns tasks, and synthesizes completion."""

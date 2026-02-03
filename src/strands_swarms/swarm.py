@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class SwarmCapabilities:
+class DynamicSwarmCapabilities:
     """Immutable configuration for available tools and models (created once per swarm)."""
 
     available_tools: dict[str, Callable[..., Any]]
@@ -70,12 +70,12 @@ class SwarmCapabilities:
         return list(self.available_models.keys())
 
 
-class SwarmDefinition:
-    """Mutable swarm definition created fresh per query (sub-agents and tasks)."""
+class SwarmInstance:
+    """Per-query swarm instance holding sub-agents and tasks created during planning."""
 
     def __init__(
         self,
-        capabilities: SwarmCapabilities,
+        capabilities: DynamicSwarmCapabilities,
         hook_registry: HookRegistry | None = None,
     ) -> None:
         self._capabilities = capabilities
@@ -85,7 +85,7 @@ class SwarmDefinition:
         self._color_index = 0
 
     @property
-    def capabilities(self) -> SwarmCapabilities:
+    def capabilities(self) -> DynamicSwarmCapabilities:
         return self._capabilities
 
     def emit(self, event: Any) -> None:
@@ -206,14 +206,14 @@ class _TaskLifecycleHook(HookProvider):
 
 
 def build_swarm(
-    context: SwarmDefinition,
+    context: SwarmInstance,
     *,
     use_colored_output: bool = False,
     execution_timeout: float = 900.0,
     task_timeout: float = 300.0,
     session_config: SessionConfig | None = None,
 ) -> Graph:
-    """Build a swarm graph from an SwarmDefinition."""
+    """Build a swarm graph from a SwarmInstance."""
     capabilities = context.capabilities
 
     if not context.tasks:
@@ -327,7 +327,7 @@ class DynamicSwarm:
         verbose: bool = False,
     ) -> None:
         # Create immutable capabilities once
-        self._capabilities = SwarmCapabilities(
+        self._capabilities = DynamicSwarmCapabilities(
             available_tools=available_tools or {},
             available_models=available_models or {},
             default_model=default_agent_model,
@@ -362,7 +362,7 @@ class DynamicSwarm:
 
     async def execute_async(self, query: str) -> DynamicSwarmResult:
         # Create fresh execution context per query
-        context = SwarmDefinition(
+        context = SwarmInstance(
             capabilities=self._capabilities,
             hook_registry=self._hook_registry,
         )
@@ -438,7 +438,7 @@ class DynamicSwarm:
         )
 
     async def _run_planning(
-        self, query: str, context: SwarmDefinition
+        self, query: str, context: SwarmInstance
     ) -> _PlanningResult:
         from .orchestrator import create_orchestrator_agent
 
@@ -471,7 +471,7 @@ class DynamicSwarm:
     async def _run_completion(
         self,
         query: str,
-        context: SwarmDefinition,
+        context: SwarmInstance,
         execution_result: MultiAgentResult | None,
         orchestrator: Agent,
     ) -> str | None:
