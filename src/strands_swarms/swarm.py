@@ -9,9 +9,14 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from strands import Agent
 from strands.hooks import HookProvider, HookRegistry
-from strands.hooks.events import BeforeNodeCallEvent, AfterNodeCallEvent
 from strands.multiagent.base import MultiAgentResult, Status
-from strands.multiagent.graph import Graph, GraphBuilder, GraphResult
+from strands.multiagent.graph import (
+    AfterNodeCallEvent,
+    BeforeNodeCallEvent,
+    Graph,
+    GraphBuilder,
+    GraphResult,
+)
 from strands.session.file_session_manager import FileSessionManager
 
 from .events import (
@@ -200,11 +205,9 @@ class _TaskLifecycleHook(HookProvider):
     def _on_node_complete(self, event: AfterNodeCallEvent) -> None:
         task = self._task_manager.get(event.node_id)
         if task and task.is_executing:
-            if hasattr(event, "error") and event.error:
-                self._task_manager.fail(event.node_id, error=str(event.error))
-            else:
-                result = getattr(event, "result", None)
-                self._task_manager.complete(event.node_id, result=result)
+            # AfterNodeCallEvent doesn't carry result/error - just mark as complete
+            # The actual result is available in the GraphResult after execution
+            self._task_manager.complete(event.node_id)
 
 
 def build_swarm(
@@ -450,7 +453,8 @@ class DynamicSwarm:
             ))
 
             # Graph execution handles task lifecycle via _TaskLifecycleHook
-            execution_result = await build_result.graph.invoke_async()
+            # Pass the original query as the task input for entry nodes
+            execution_result = await build_result.graph.invoke_async(query)
 
             self._emit(ExecutionCompletedEvent(
                 status=str(execution_result.status) if execution_result else "FAILED",
