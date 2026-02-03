@@ -287,7 +287,7 @@ class DynamicSwarm:
 
         # Phase 3: Synthesis
         assert planning_result.orchestrator is not None
-        final_response = await self._run_synthesis(
+        final_response = await self._synthesize_final_response(
             query, definition, execution_result, planning_result.orchestrator
         )
 
@@ -333,7 +333,7 @@ class DynamicSwarm:
         except Exception as e:
             return _PlanningResult(success=False, error=str(e))
 
-    async def _run_synthesis(
+    async def _synthesize_final_response(
         self,
         query: str,
         definition: SwarmDefinition,
