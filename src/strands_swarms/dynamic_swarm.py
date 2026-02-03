@@ -78,12 +78,21 @@ class DynamicSwarm:
             raise RuntimeError("DynamicSwarm stream ended without producing a result")
         return result
 
-    async def stream_async(self, query: str) -> AsyncIterator[dict[str, Any]]:
+    async def stream_async(
+        self,
+        query: str,
+        *,
+        include_subagent_events: bool = False,
+    ) -> AsyncIterator[dict[str, Any]]:
         """Stream execution events, including planning and graph execution.
 
         This yields:
         - High-level DynamicSwarm events (planning/execution/synthesis)
         - Raw `strands` Graph stream events (e.g. multiagent_node_start/stop, multiagent_result)
+
+        By default, per-node agent stream events (type: "multiagent_node_stream") are
+        filtered to avoid interleaved token/tool output when tasks run in parallel.
+        Pass `include_subagent_events=True` to include them.
         """
         definition = SwarmDefinition(capabilities=self._capabilities)
 
@@ -153,6 +162,8 @@ class DynamicSwarm:
                     candidate = event.get("result")
                     if isinstance(candidate, GraphResult):
                         execution_result = candidate
+                if not include_subagent_events and event.get("type") == "multiagent_node_stream":
+                    continue
                 yield event
         except Exception as e:
             execution_error = str(e)

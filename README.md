@@ -75,20 +75,26 @@ result = swarm.execute("Research the latest AI trends and write a summary report
 
 print(f"Status: {result.status}")
 print(f"Agents spawned: {result.agents_spawned}")
-print(f"Tasks completed: {result.tasks_created}")
+print(f"Tasks created: {result.tasks_created}")
 print(f"Final response: {result.final_response}")
 ```
 
 ## Streaming Output
 
-Use `stream_async()` to capture and print the full execution trajectory (planning + graph events):
+Use `stream_async()` to capture the full execution trajectory (planning + graph events).
+
+By default, `DynamicSwarm` filters out per-node token/tool streaming events (type: `multiagent_node_stream`)
+to avoid interleaved output when tasks run in parallel. Pass `include_subagent_events=True` to include them.
 
 ```python
 import asyncio
 
 async def run():
     swarm = DynamicSwarm(...)
-    async for event in swarm.stream_async("Research AI trends and write a summary report"):
+    async for event in swarm.stream_async(
+        "Research AI trends and write a summary report",
+        include_subagent_events=False,  # set True to include token/tool stream events
+    ):
         # Print or persist events to build a custom trajectory view
         ...
 
@@ -100,19 +106,19 @@ asyncio.run(run())
 
 ```
 ============================================================
-🚀 DYNAMIC SWARM STARTING
+DYNAMIC SWARM STARTING
 ============================================================
 
-📝 Query: Research the latest AI trends and write a summary report
-📦 Available tools: ['search_web', 'analyze_data', 'write_file', 'execute_code']
-🧠 Available models: ['powerful', 'fast']
+Query: Research the latest AI trends and write a summary report
+Available tools: ['search_web', 'analyze_data', 'write_file', 'execute_code']
+Available models: ['powerful', 'fast']
 
 ----------------------------------------
-📐 PHASE 1: PLANNING
+PHASE 1: PLANNING
 ----------------------------------------
 
 ········································
-✅ PLAN READY
+PLAN READY
 ········································
 
 Agents (2):
@@ -124,16 +130,22 @@ Tasks (2):
   - write_summary_report -> report_writer (depends: ['research_ai_trends'])
 
 ----------------------------------------
-⚡ PHASE 2: EXECUTION
+PHASE 2: EXECUTION
 ----------------------------------------
 
 ----------------------------------------
-🏁 EXECUTION COMPLETE
+TASK STATUS
+----------------------------------------
+researcher: research_ai_trends [executing]
+report_writer: write_summary_report [pending (blocked: research_ai_trends)]
+
+----------------------------------------
+EXECUTION COMPLETE
 ----------------------------------------
 Status: completed
 
 ============================================================
-✅ SWARM COMPLETED SUCCESSFULLY
+Status: completed
 ============================================================
 ```
 

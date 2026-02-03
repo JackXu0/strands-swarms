@@ -34,7 +34,10 @@ Example:
     import asyncio
 
     async def run():
-        async for event in swarm.stream_async("Research AI trends and summarize"):
+        async for event in swarm.stream_async(
+            "Research AI trends and summarize",
+            include_subagent_events=False,
+        ):
             print(event)
 
     asyncio.run(run())
