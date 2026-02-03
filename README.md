@@ -83,114 +83,40 @@ for task in result.tasks_created:
     print(f"  - {task.name} -> {task.agent}{depends}")
 print(f"Final response: {result.final_response}")
 ```
-
-## Streaming Output
-
-Use `stream_async()` to capture the full execution trajectory (planning + graph events).
-
-By default, `DynamicSwarm` filters out per-node token/tool streaming events (type: `multiagent_node_stream`)
-to avoid interleaved output when tasks run in parallel. Pass `include_subagent_events=True` to include them.
-
-The provided example script prints a human-friendly trajectory with **ANSI colors per sub-agent**
-(agent/task lines, tool calls, and final task outputs). Colors are shown in a real terminal; set `NO_COLOR=1` to disable.
-
-```python
-import asyncio
-
-async def run():
-    swarm = DynamicSwarm(...)
-    async for event in swarm.stream_async(
-        "Research AI trends and write a summary report",
-        include_subagent_events=False,  # set True to include token/tool stream events
-    ):
-        # Print or persist events to build a custom trajectory view
-        ...
-
-asyncio.run(run())
-```
-
 <details>
-<summary>Example output (see examples/dynamic_swarm.py)</summary>
+<summary>Example output (see examples/simple.py)</summary>
 
 ```
-Query: Research the latest AI trends and write a summary report
-============================================================
-
-============================================================
-DYNAMIC SWARM STARTING
-============================================================
-
-Query: Research the latest AI trends and write a summary report
-Available tools: ['search_web', 'analyze_data', 'write_file', 'execute_code']
-Available models: ['powerful', 'fast']
-
-----------------------------------------
-PHASE 1: PLANNING
-----------------------------------------
-
-········································
-PLAN READY
-········································
-Agents (2):
-  - researcher: AI trends researcher
-  - writer: Summary report writer
-
-Tasks (2):
-  - research_ai_trends -> researcher
-  - write_summary_report -> writer (depends: [research_ai_trends])
-
-----------------------------------------
-PHASE 2: EXECUTION
-----------------------------------------
-
-----------------------------------------
-TASK STATUS
-----------------------------------------
-researcher: research_ai_trends [pending (ready)]
-writer: write_summary_report [pending (blocked: research_ai_trends)]
-
-
-----------------------------------------
-TASK STATUS
-----------------------------------------
-researcher: research_ai_trends [executing]
-writer: write_summary_report [pending (blocked: research_ai_trends)]
-
-researcher: Tool #1: search_web
-researcher: Tool #2: search_web
-
-researcher: research_ai_trends
-AI Trends Summary Report 2024
-...
-
-----------------------------------------
-TASK STATUS
-----------------------------------------
-researcher: research_ai_trends [completed]
-writer: write_summary_report [executing]
-
-writer: Tool #1: write_file
-
-writer: write_summary_report
-I have created a markdown-formatted summary report based on the AI trends research...
-
-----------------------------------------
-EXECUTION COMPLETE
-----------------------------------------
-Status: completed
-
-Final response:
-Here is the summary report on AI trends for 2024:
-...
-
-============================================================
 Status: Status.COMPLETED
 Agents spawned: 2
   - researcher: AI trends researcher
-  - writer: Summary report writer
-Tasks created: 2
-  - research_ai_trends -> researcher
-  - write_summary_report -> writer (depends: [research_ai_trends])
+  - writer: AI trends summary writer
+Tasks created: 3
+  - web_research -> researcher
+  - analyze_trends -> researcher (depends: [web_research])
+  - write_summary -> writer (depends: [analyze_trends])
+Final response: <thinking>
+The job is complete. The researchers gathered comprehensive information on the latest AI trends through web searches, analyzed that information to identify the most important developments and themes, and the writer put it together into a clear summary report touching on:
+
+- Major AI breakthroughs in the last year across language, vision, multimodal and generative models
+- Potential applications of these advancing AI capabilities 
+- Rapid growth in enterprise adoption and startup investment
+- Key technical challenges like robustness, interpretability and scalability 
+- Important societal and ethical considerations around safety, bias and responsible use
+- Longer-term possibilities around artificial general intelligence
+
+The report provides a succinct yet informative overview of the state of the art in AI and the key trends shaping the field. It directly addresses the original request, so no further analysis or synthesis is needed. The final report can be delivered as-is to the human who made the request.
+</thinking>
+
+Here is a summary report on the latest trends in artificial intelligence:
+
+Artificial intelligence continues to progress rapidly, with significant developments over the past year in areas like natural language processing, computer vision, multimodal learning, and generative AI. Powerful language models can now engage in human-like dialogue and assist with writing. AI systems can perceive and reason jointly about text, images, audio and video. New generative models can create highly realistic images from textual descriptions. And AI has achieved human-level performance on complex strategy games.
+
+These advances open up transformative potential applications — enhancing creative workflows, accelerating scientific discovery, enabling more natural human-computer interaction. Enterprises across sectors are increasingly adopting AI technologies, and venture capital investment into AI startups reached record levels in 2022.
+
+However, key technical challenges remain in making AI systems more robust, interpretable and scalable. Important societal considerations are also in play around AI ethics, safety, bias and responsible use. Longer-term, some believe AI could progress toward human-level artificial general intelligence, though this remains a future possibility.
+
+In summary, AI capabilities are advancing quickly, with potentially profound impacts across domains in the coming years. Ongoing research aims to further enhance performance while addressing crucial challenges. Organizations will need to balance leveraging AI's competitive advantages with deploying it in a trustworthy manner. The field's rapid progress looks set to continue — and to reshape the world in the process.
 ```
 
 </details>
@@ -205,7 +131,7 @@ Tasks created: 2
 
 - [x] Rollout execution — string-in, string-out multi-agent workflows
 - [x] Dynamic orchestration — automatic agent creation and task assignment
-- [x] Streaming trajectory output — consume `stream_async()`
+- [ ] Streaming trajectory output — consume `stream_async()`
 - [ ] RL support — training and fine-tuning via strands-sglang
 
 ## Contributing
