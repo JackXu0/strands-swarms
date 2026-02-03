@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 from strands import Agent, tool
 
-from .events import AgentSpawnedEvent, PlanningCompletedEvent, TaskCreatedEvent
-
 if TYPE_CHECKING:
     from strands.models import Model
 
@@ -67,15 +65,6 @@ def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Any]:
 
         try:
             definition.register_agent(agent_def)
-            registered = definition.sub_agents.get(name)
-            definition.emit(AgentSpawnedEvent(
-                name=name,
-                role=role,
-                instructions=instructions or None,
-                tools=tools or [],
-                model=model,
-                color=registered.color if registered else None,
-            ))
             return f"Created agent '{name}' ({role})"
         except ValueError as e:
             return f"Error: {e}"
@@ -100,12 +89,6 @@ def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Any]:
 
         try:
             definition.register_task(task_def)
-            definition.emit(TaskCreatedEvent(
-                name=name,
-                agent=agent_name,
-                description=description or None,
-                depends_on=depends_on or [],
-            ))
             deps = f" (after: {depends_on})" if depends_on else ""
             return f"Created task '{name}' -> {agent_name}{deps}"
         except ValueError as e:
@@ -114,11 +97,6 @@ def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Any]:
     @tool
     def finalize_plan() -> str:
         """Signal that planning is complete."""
-        definition.emit(PlanningCompletedEvent(
-            entry_task=None,
-            agents=list(definition.sub_agents.values()),
-            tasks=list(definition.tasks.values()),
-        ))
         return f"Plan finalized.\n{definition.get_summary()}"
 
     return [spawn_agent, create_task, finalize_plan]

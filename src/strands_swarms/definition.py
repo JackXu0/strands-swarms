@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
-from strands.hooks import HookRegistry
 from strands.session.file_session_manager import FileSessionManager
 
 # ANSI Color Constants (for consistent agent output coloring)
@@ -110,10 +109,8 @@ class SwarmDefinition:
     def __init__(
         self,
         capabilities: DynamicSwarmCapabilities,
-        hook_registry: HookRegistry | None = None,
     ) -> None:
         self._capabilities = capabilities
-        self._hook_registry = hook_registry
         self.sub_agents: dict[str, AgentDefinition] = {}
         self.tasks: dict[str, TaskDefinition] = {}
         self._color_index = 0
@@ -121,15 +118,6 @@ class SwarmDefinition:
     @property
     def capabilities(self) -> DynamicSwarmCapabilities:
         return self._capabilities
-
-    @property
-    def hook_registry(self) -> HookRegistry | None:
-        return self._hook_registry
-
-    def emit(self, event: Any) -> None:
-        """Emit an event to the hook registry."""
-        if self._hook_registry and self._hook_registry.has_callbacks():
-            self._hook_registry.invoke_callbacks(event)
 
     def register_agent(self, definition: AgentDefinition) -> None:
         """Register a sub-agent definition."""

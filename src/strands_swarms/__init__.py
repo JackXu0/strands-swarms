@@ -26,25 +26,21 @@ Example:
         '''Search the web.'''
         return f"Results for: {query}"
 
-    # Basic usage (stateless agents)
-    swarm = DynamicSwarm(
-        available_tools={"search_web": search_web},
-        verbose=True,
-    )
+    # Basic usage
+    swarm = DynamicSwarm(available_tools={"search_web": search_web})
     result = swarm.execute("Research AI trends and summarize")
 
-    # With session persistence (agents maintain memory across tasks)
-    swarm_with_memory = DynamicSwarm(
-        available_tools={"search_web": search_web},
-        session_id="project-alpha",  # Enables per-agent session persistence
-        session_storage_dir="./.swarm_sessions",
-        verbose=True,
-    )
-    result = swarm_with_memory.execute("Research AI trends")
+    # Streaming trajectory
+    import asyncio
+
+    async def run():
+        async for event in swarm.stream_async("Research AI trends and summarize"):
+            print(event)
+
+    asyncio.run(run())
 """
 
 # Re-export strands types for convenience
-from strands.hooks import HookProvider, HookRegistry
 from strands.multiagent.base import Status
 
 from .definition import (
@@ -55,24 +51,7 @@ from .definition import (
     TaskDefinition,
 )
 from .dynamic_swarm import DynamicSwarm, DynamicSwarmResult, build_swarm
-from .events import (
-    AgentSpawnedEvent,
-    ExecutionCompletedEvent,
-    ExecutionStartedEvent,
-    PlanningCompletedEvent,
-    PlanningStartedEvent,
-    PrintingHookProvider,
-    SwarmCompletedEvent,
-    SwarmFailedEvent,
-    SwarmStartedEvent,
-    TaskCompletedEvent,
-    TaskCreatedEvent,
-    TaskFailedEvent,
-    TaskInterruptedEvent,
-    TaskStartedEvent,
-)
 from .orchestrator import create_orchestrator_agent
-from .task import Task, TaskManager
 
 __version__ = "0.1.1"
 
@@ -89,26 +68,5 @@ __all__ = [
     "SessionConfig",
     # Orchestrator
     "create_orchestrator_agent",
-    # Task lifecycle
-    "Task",
-    "TaskManager",
     "Status",
-    # Events (for custom hooks)
-    "SwarmStartedEvent",
-    "PlanningStartedEvent",
-    "AgentSpawnedEvent",
-    "TaskCreatedEvent",
-    "PlanningCompletedEvent",
-    "ExecutionStartedEvent",
-    "TaskStartedEvent",
-    "TaskCompletedEvent",
-    "TaskFailedEvent",
-    "TaskInterruptedEvent",
-    "ExecutionCompletedEvent",
-    "SwarmCompletedEvent",
-    "SwarmFailedEvent",
-    # Hook system
-    "PrintingHookProvider",
-    "HookProvider",
-    "HookRegistry",
 ]

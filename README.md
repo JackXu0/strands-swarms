@@ -79,16 +79,24 @@ print(f"Tasks completed: {result.tasks_created}")
 print(f"Final response: {result.final_response}")
 ```
 
-## Verbose Output
+## Streaming Output
 
-Enable `verbose=True` to see real-time execution with color-coded agents:
+Use `stream_async()` to capture and print the full execution trajectory (planning + graph events):
 
 ```python
-swarm = DynamicSwarm(..., verbose=True)
+import asyncio
+
+async def run():
+    swarm = DynamicSwarm(...)
+    async for event in swarm.stream_async("Research AI trends and write a summary report"):
+        # Print or persist events to build a custom trajectory view
+        ...
+
+asyncio.run(run())
 ```
 
 <details>
-<summary>Example output (colors: 🔵 researcher, 🟢 report_writer)</summary>
+<summary>Example output (see examples/dynamic_swarm.py)</summary>
 
 ```
 ============================================================
@@ -102,118 +110,27 @@ swarm = DynamicSwarm(..., verbose=True)
 ----------------------------------------
 📐 PHASE 1: PLANNING
 ----------------------------------------
-<thinking>
-To analyze this request and design a workflow, we need:
-
-1. A researcher agent to gather information on the latest AI trends using the search_web tool
-2. A writer agent to create the summary report using the write_file tool
-
-The research should be completed before the writing can begin, so there is a dependency between the tasks. 
-
-The search_web and write_file tools provide the key capabilities needed. The analyze_data and execute_code tools are not directly relevant for this request.
-
-The "powerful" model should be used for the agents to ensure high-quality research and writing. The "fast" model is less critical for this offline task.
-
-All the necessary tools and information are available to proceed with creating the agents and tasks to fulfill this request.
-</thinking>
-Tool #1: spawn_agent
-Tool #2: spawn_agent
-Tool #3: create_task
-Tool #4: create_task
-Tool #5: finalize_plan
 
 ········································
-🤖 AGENTS
+✅ PLAN READY
 ········································
 
-  🔵 [researcher]
-       Role: Researches the latest AI trends
-       Tools: ['search_web']
-       Model: powerful
+Agents (2):
+  - researcher: Researches the latest AI trends
+  - report_writer: Writes a summary report on the research findings
 
-  🟢 [report_writer]
-       Role: Writes a summary report on the research findings
-       Tools: ['write_file']
-       Model: powerful
-
-········································
-📋 TASKS & DEPENDENCIES
-········································
-
-  🔵 [research_ai_trends] → researcher
-       Research the latest trends and advancements in artificial intelligence
-       ⚡ Can start immediately
-
-  🟢 [write_summary_report] → report_writer
-       Write a summary report on the AI trends research findings
-       ⏳ Waits for: 🔵 research_ai_trends
-
-········································
-✅ PLAN READY — 2 agents, 2 tasks
-········································
+Tasks (2):
+  - research_ai_trends -> researcher
+  - write_summary_report -> report_writer (depends: ['research_ai_trends'])
 
 ----------------------------------------
 ⚡ PHASE 2: EXECUTION
 ----------------------------------------
 
-🔵 ▶️  research_ai_trends
-   <thinking>
-   To research the latest AI trends, the most relevant tool is search_web. 
-   This will allow me to find up-to-date information on AI trends.
-   </thinking>
-
-   Tool: search_web
-     query: "latest AI trends"
-
-   <result>
-   Summary Report: Latest AI Trends
-
-   Trend 1: Large Language Models — Models like GPT-3, PaLM, and Chinchilla 
-   have demonstrated remarkable language understanding and generation...
-
-   Trend 2: Multimodal AI — DALL-E, Imagen, Stable Diffusion can generate 
-   highly realistic images from text descriptions...
-
-   Trend 3: Robotics and Embodied AI — Advances in robotic perception, 
-   motor control, and task learning for real-world environments...
-   </result>
-   ✓ Completed
-
-🟢 ▶️  write_summary_report  
-   <thinking>
-   The research findings are ready. I'll structure the key trends into a 
-   clear summary report covering LLMs, multimodal AI, and robotics.
-   </thinking>
-
-   <result>
-   Summary Report: Latest AI Trends
-   [Full report content...]
-   </result>
-   ✓ Completed
-
 ----------------------------------------
 🏁 EXECUTION COMPLETE
 ----------------------------------------
-   Status: COMPLETED
-   Agents: 2 | Tasks: 2
-
-<thinking>
-The agents have completed their tasks. The report covers:
-1. Large language models becoming increasingly powerful
-2. Multimodal AI advancing rapidly  
-3. Progress in robotics and embodied AI
-</thinking>
-
-<result>
-Here is a summary report on the latest trends in artificial intelligence:
-
-AI continues to advance rapidly across several key fronts. Large language models 
-like GPT-3 and PaLM exhibit increasingly powerful natural language abilities. 
-Multimodal AI can now generate realistic images from text descriptions. Robots 
-are becoming more autonomous with advances in perception and motor control.
-
-The rapid pace of progress looks set to continue and accelerate in coming years.
-</result>
+Status: completed
 
 ============================================================
 ✅ SWARM COMPLETED SUCCESSFULLY
@@ -221,40 +138,6 @@ The rapid pace of progress looks set to continue and accelerate in coming years.
 ```
 
 </details>
-
-## Custom Event Handling
-
-Use strands-compatible hooks for programmatic event handling:
-
-```python
-from strands_swarms import (
-    DynamicSwarm,
-    HookProvider,
-    HookRegistry,
-    AgentSpawnedEvent,
-    TaskCompletedEvent,
-    SwarmCompletedEvent,
-)
-
-class MyHookProvider(HookProvider):
-    def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
-        registry.add_callback(AgentSpawnedEvent, self._on_agent)
-        registry.add_callback(TaskCompletedEvent, self._on_task)
-        registry.add_callback(SwarmCompletedEvent, self._on_complete)
-    
-    def _on_agent(self, event: AgentSpawnedEvent) -> None:
-        print(f"🤖 Agent '{event.name}' spawned")
-    
-    def _on_task(self, event: TaskCompletedEvent) -> None:
-        print(f"✓ Task '{event.name}' completed")
-    
-    def _on_complete(self, event: SwarmCompletedEvent) -> None:
-        print("🏁 Swarm completed!")
-
-swarm = DynamicSwarm(..., hooks=[MyHookProvider()])
-```
-
-Available events: `AgentSpawnedEvent`, `TaskCreatedEvent`, `TaskStartedEvent`, `TaskCompletedEvent`, `SwarmCompletedEvent`, `SwarmFailedEvent`
 
 ## Status & Roadmap
 
@@ -266,7 +149,7 @@ Available events: `AgentSpawnedEvent`, `TaskCreatedEvent`, `TaskStartedEvent`, `
 
 - [x] Rollout execution — string-in, string-out multi-agent workflows
 - [x] Dynamic orchestration — automatic agent creation and task assignment
-- [x] Event-driven monitoring — real-time status with hooks
+- [x] Streaming trajectory output — consume `stream_async()`
 - [ ] RL support — training and fine-tuning via strands-sglang
 
 ## Contributing

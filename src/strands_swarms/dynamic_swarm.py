@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 from strands import Agent
-from strands.hooks import HookProvider, HookRegistry
 from strands.multiagent.base import MultiAgentResult, Status
 from strands.multiagent.graph import (
-    AfterNodeCallEvent,
-    BeforeNodeCallEvent,
     Graph,
     GraphBuilder,
     GraphResult,
@@ -22,17 +20,6 @@ from .definition import (
     SessionConfig,
     SwarmDefinition,
 )
-from .events import (
-    ExecutionCompletedEvent,
-    ExecutionStartedEvent,
-    PlanningStartedEvent,
-    PrintingHookProvider,
-    SwarmCompletedEvent,
-    SwarmFailedEvent,
-    SwarmStartedEvent,
-    create_colored_callback_handler,
-)
-from .task import TaskManager
 
 if TYPE_CHECKING:
     from strands.models import Model
@@ -62,8 +49,6 @@ class DynamicSwarm:
         task_timeout: float = 300.0,
         session_id: str | None = None,
         session_storage_dir: str = "./.swarm_sessions",
-        hooks: list[HookProvider] | None = None,
-        verbose: bool = False,
     ) -> None:
         self._capabilities = DynamicSwarmCapabilities(
             available_tools=available_tools or {},
@@ -79,90 +64,157 @@ class DynamicSwarm:
             else None
         )
 
-        self._hook_registry = HookRegistry()
-        if verbose:
-            self._hook_registry.add_hook(PrintingHookProvider())
-        if hooks:
-            for hook in hooks:
-                self._hook_registry.add_hook(hook)
-
     def execute(self, query: str) -> DynamicSwarmResult:
         """Execute a query synchronously."""
         return asyncio.run(self.execute_async(query))
 
     async def execute_async(self, query: str) -> DynamicSwarmResult:
-        """Execute a query asynchronously."""
-        use_colored_output = self._hook_registry.has_callbacks()
-        definition = SwarmDefinition(
-            capabilities=self._capabilities,
-            hook_registry=self._hook_registry,
-        )
-        emit = definition.emit
+        """Execute a query asynchronously (non-streaming)."""
+        result: DynamicSwarmResult | None = None
+        async for event in self.stream_async(query):
+            if event.get("type") == "swarm_result":
+                result = event.get("result")
+        if not isinstance(result, DynamicSwarmResult):
+            raise RuntimeError("DynamicSwarm stream ended without producing a result")
+        return result
 
-        emit(SwarmStartedEvent(
-            query=query,
-            available_tools=self._capabilities.available_tool_names,
-            available_models=self._capabilities.available_model_names,
-        ))
+    async def stream_async(self, query: str) -> AsyncIterator[dict[str, Any]]:
+        """Stream execution events, including planning and graph execution.
+
+        This yields:
+        - High-level DynamicSwarm events (planning/execution/synthesis)
+        - Raw `strands` Graph stream events (e.g. multiagent_node_start/stop, multiagent_result)
+        """
+        definition = SwarmDefinition(capabilities=self._capabilities)
+
+        yield {
+            "type": "swarm_started",
+            "query": query,
+            "available_tools": self._capabilities.available_tool_names,
+            "available_models": self._capabilities.available_model_names,
+        }
 
         # Phase 1: Planning
-        emit(PlanningStartedEvent())
+        yield {"type": "planning_started"}
         planning_result = await self._run_planning(query, definition)
 
         if not planning_result.success:
-            emit(SwarmFailedEvent(error=planning_result.error or "Planning failed"))
-            return DynamicSwarmResult(
-                status=Status.FAILED,
-                planning_output=planning_result.output,
-                error=planning_result.error,
-            )
+            error = planning_result.error or "Planning failed"
+            yield {"type": "planning_failed", "error": error}
+            yield {
+                "type": "swarm_result",
+                "result": DynamicSwarmResult(
+                    status=Status.FAILED,
+                    planning_output=planning_result.output,
+                    agents_spawned=len(definition.sub_agents),
+                    tasks_created=len(definition.tasks),
+                    error=error,
+                ),
+            }
+            return
 
         if not definition.tasks:
-            emit(SwarmFailedEvent(error="No tasks were created"))
-            return DynamicSwarmResult(
-                status=Status.FAILED,
-                planning_output=planning_result.output,
-                error="No tasks were created",
-            )
+            error = "No tasks were created"
+            yield {"type": "planning_failed", "error": error}
+            yield {
+                "type": "swarm_result",
+                "result": DynamicSwarmResult(
+                    status=Status.FAILED,
+                    planning_output=planning_result.output,
+                    agents_spawned=len(definition.sub_agents),
+                    tasks_created=0,
+                    error=error,
+                ),
+            }
+            return
+
+        yield {
+            "type": "planning_completed",
+            "planning_output": planning_result.output,
+            "summary": definition.get_summary(),
+            "agents": definition.sub_agents,
+            "tasks": definition.tasks,
+        }
 
         # Phase 2: Execution
         graph = build_swarm(
             definition,
-            use_colored_output=use_colored_output,
             execution_timeout=self._execution_timeout,
             task_timeout=self._task_timeout,
             session_config=self._session_config,
         )
+        yield {"type": "execution_started", "tasks": list(definition.tasks.keys())}
 
-        emit(ExecutionStartedEvent(tasks=list(definition.tasks.keys())))
-        execution_result = await graph.invoke_async(query)
+        execution_result: GraphResult | None = None
+        execution_error: str | None = None
+        try:
+            async for event in graph.stream_async(query):
+                if event.get("type") == "multiagent_result":
+                    candidate = event.get("result")
+                    if isinstance(candidate, GraphResult):
+                        execution_result = candidate
+                yield event
+        except Exception as e:
+            execution_error = str(e)
 
-        status = execution_result.status if execution_result else Status.FAILED
-        emit(ExecutionCompletedEvent(
-            status=status.value,
-            agent_count=len(definition.sub_agents),
-            task_count=len(definition.tasks),
-        ))
+        if execution_error:
+            yield {"type": "execution_failed", "error": execution_error}
+            yield {
+                "type": "swarm_result",
+                "result": DynamicSwarmResult(
+                    status=Status.FAILED,
+                    planning_output=planning_result.output,
+                    execution_result=execution_result,
+                    final_response=None,
+                    agents_spawned=len(definition.sub_agents),
+                    tasks_created=len(definition.tasks),
+                    error=execution_error,
+                ),
+            }
+            return
+
+        if not execution_result:
+            error = "Graph completed without producing a result"
+            yield {"type": "execution_failed", "error": error}
+            yield {
+                "type": "swarm_result",
+                "result": DynamicSwarmResult(
+                    status=Status.FAILED,
+                    planning_output=planning_result.output,
+                    execution_result=None,
+                    final_response=None,
+                    agents_spawned=len(definition.sub_agents),
+                    tasks_created=len(definition.tasks),
+                    error=error,
+                ),
+            }
+            return
+
+        yield {"type": "execution_completed", "status": execution_result.status.value}
 
         # Phase 3: Synthesis
+        yield {"type": "synthesis_started"}
         assert planning_result.orchestrator is not None
         final_response = await self._synthesize_final_response(
             query, definition, execution_result, planning_result.orchestrator
         )
+        yield {"type": "synthesis_completed", "final_response": final_response}
 
-        if status == Status.COMPLETED:
-            emit(SwarmCompletedEvent())
-        else:
-            emit(SwarmFailedEvent(error=f"Execution ended with status {status.value}"))
-
-        return DynamicSwarmResult(
-            status=status,
+        result = DynamicSwarmResult(
+            status=execution_result.status,
             planning_output=planning_result.output,
             execution_result=execution_result,
             final_response=final_response,
             agents_spawned=len(definition.sub_agents),
             tasks_created=len(definition.tasks),
+            error=(
+                None
+                if execution_result.status == Status.COMPLETED
+                else f"Execution ended with status {execution_result.status.value}"
+            ),
         )
+
+        yield {"type": "swarm_result", "result": result}
 
     async def _run_planning(
         self, query: str, definition: SwarmDefinition
@@ -256,31 +308,9 @@ class _PlanningResult:
 # Graph Building
 # =============================================================================
 
-class _TaskLifecycleHook(HookProvider):
-    """Hook that tracks task lifecycle via graph execution events."""
-
-    def __init__(self, task_manager: TaskManager) -> None:
-        self._task_manager = task_manager
-
-    def register_hooks(self, registry: HookRegistry, **_: Any) -> None:
-        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
-        registry.add_callback(AfterNodeCallEvent, self._on_node_complete)
-
-    def _on_node_start(self, event: BeforeNodeCallEvent) -> None:
-        task = self._task_manager.get(event.node_id)
-        if task and task.is_pending:
-            self._task_manager.start(event.node_id)
-
-    def _on_node_complete(self, event: AfterNodeCallEvent) -> None:
-        task = self._task_manager.get(event.node_id)
-        if task and task.is_executing:
-            self._task_manager.complete(event.node_id)
-
-
 def build_swarm(
     definition: SwarmDefinition,
     *,
-    use_colored_output: bool = False,
     execution_timeout: float = 900.0,
     task_timeout: float = 300.0,
     session_config: SessionConfig | None = None,
@@ -298,20 +328,12 @@ def build_swarm(
         model_name = agent_def.model or capabilities.default_model
         model = capabilities.available_models.get(model_name) if model_name else None
 
-        callback_handler = None
-        if use_colored_output and agent_def.color:
-            callback_handler = create_colored_callback_handler(agent_def.color, name)
-
         agents[name] = Agent(
             name=name,
             system_prompt=agent_def.build_system_prompt(),
             model=model,
             tools=tools or None,  # type: ignore[arg-type]
-            callback_handler=callback_handler,
-            session_manager=session_config.for_agent(name) if session_config else None,
         )
-
-    task_manager = TaskManager(definition.tasks, hook_registry=definition.hook_registry)
 
     # Build the execution graph
     builder = GraphBuilder()
@@ -325,7 +347,6 @@ def build_swarm(
     builder.set_node_timeout(task_timeout)
     if session_config:
         builder.set_session_manager(session_config.for_graph())
-    builder.set_hook_providers([_TaskLifecycleHook(task_manager)])
 
     return builder.build()
 

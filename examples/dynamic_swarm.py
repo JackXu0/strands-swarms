@@ -8,22 +8,12 @@ Current version: Rollout-only (string-in, string-out execution).
 RL support coming soon via strands-sglang integration.
 """
 
-import time
+import asyncio
 
 from strands import tool
 from strands.models import BedrockModel
 
-from strands_swarms import (
-    AgentSpawnedEvent,
-    DynamicSwarm,
-    HookProvider,
-    HookRegistry,
-    SwarmCompletedEvent,
-    SwarmFailedEvent,
-    TaskCompletedEvent,
-    TaskCreatedEvent,
-    TaskStartedEvent,
-)
+from strands_swarms import DynamicSwarm
 
 
 # =============================================================================
@@ -80,65 +70,83 @@ MODELS = {
 # Main
 # =============================================================================
 
-def main():
+def _format_status(status: object) -> str:
+    value = getattr(status, "value", None)
+    return str(value) if value is not None else str(status)
+
+
+async def main() -> None:
     swarm = DynamicSwarm(
         available_tools=TOOLS,
         available_models=MODELS,
         orchestrator_model=MODELS["powerful"],
         default_agent_model="fast",
-        verbose=True,  # or hooks=[TimestampedHookProvider()]
     )
 
     query = "Research the latest AI trends and write a summary report"
-    print(f"Query: {query}\n{'=' * 60}")
+    print(f"Query: {query}\n{'=' * 60}\n")
 
-    result = swarm.execute(query)
+    result = None
+    async for event in swarm.stream_async(query):
+        t = event.get("type")
 
-    print("\n" + "=" * 60)
-    print(f"Status: {result.status}")
-    print(f"Agents spawned: {result.agents_spawned}")
-    print(f"Tasks created: {result.tasks_created}")
-    if result.final_response:
-        print(f"\nFinal response:\n{result.final_response}")
+        if t == "swarm_started":
+            print("=" * 60)
+            print("🚀 DYNAMIC SWARM STARTING")
+            print("=" * 60)
+            print(f"\n📝 Query: {event.get('query')}")
+            print(f"📦 Available tools: {event.get('available_tools') or ['none']}")
+            print(f"🧠 Available models: {event.get('available_models') or ['default']}")
 
+        elif t == "planning_started":
+            print("\n" + "-" * 40)
+            print("📐 PHASE 1: PLANNING")
+            print("-" * 40)
 
-# =============================================================================
-# Hooks
-# =============================================================================
+        elif t == "planning_completed":
+            print("\n" + "·" * 40)
+            print("✅ PLAN READY")
+            print("·" * 40)
+            print(event.get("summary", ""))
 
-class TimestampedHookProvider(HookProvider):
-    """Logs swarm events with timestamps."""
+        elif t == "execution_started":
+            print("\n" + "-" * 40)
+            print("⚡ PHASE 2: EXECUTION")
+            print("-" * 40)
+            tasks = event.get("tasks") or []
+            print(f"📋 Tasks: {tasks}")
 
-    def register_hooks(self, registry: HookRegistry, **kwargs) -> None:
-        registry.add_callback(AgentSpawnedEvent, self._on_agent_spawned)
-        registry.add_callback(TaskCreatedEvent, self._on_task_created)
-        registry.add_callback(TaskStartedEvent, self._on_task_started)
-        registry.add_callback(TaskCompletedEvent, self._on_task_completed)
-        registry.add_callback(SwarmCompletedEvent, self._on_swarm_completed)
-        registry.add_callback(SwarmFailedEvent, self._on_swarm_failed)
+        elif t == "multiagent_node_start":
+            print(f"\n▶️  Executing: {event.get('node_id')}")
 
-    def _ts(self) -> str:
-        return time.strftime("%H:%M:%S")
+        elif t == "multiagent_node_stop":
+            node_id = event.get("node_id")
+            node_result = event.get("node_result")
+            status = getattr(node_result, "status", None)
+            print(f"   ✓ Finished: {node_id} ({_format_status(status)})")
 
-    def _on_agent_spawned(self, event: AgentSpawnedEvent) -> None:
-        print(f"[{self._ts()}] 🤖 Agent '{event.name}' spawned: {event.role}")
+        elif t == "multiagent_result":
+            graph_result = event.get("result")
+            status = getattr(graph_result, "status", None)
+            print("\n" + "-" * 40)
+            print("🏁 EXECUTION COMPLETE")
+            print("-" * 40)
+            print(f"Status: {_format_status(status)}")
 
-    def _on_task_created(self, event: TaskCreatedEvent) -> None:
-        deps = f" (depends on: {event.depends_on})" if event.depends_on else ""
-        print(f"[{self._ts()}] 📋 Task '{event.name}' created{deps}")
+        elif t == "synthesis_completed":
+            final = event.get("final_response")
+            if final:
+                print("\nFinal response:\n" + str(final))
 
-    def _on_task_started(self, event: TaskStartedEvent) -> None:
-        print(f"[{self._ts()}] ▶️  Task '{event.name}' started")
+        elif t == "swarm_result":
+            result = event.get("result")
 
-    def _on_task_completed(self, event: TaskCompletedEvent) -> None:
-        print(f"[{self._ts()}] ✓  Task '{event.name}' completed")
-
-    def _on_swarm_completed(self, event: SwarmCompletedEvent) -> None:
-        print(f"[{self._ts()}] 🏁 Swarm completed!")
-
-    def _on_swarm_failed(self, event: SwarmFailedEvent) -> None:
-        print(f"[{self._ts()}] ❌ Swarm failed: {event.error}")
+    if result is not None:
+        print("\n" + "=" * 60)
+        print(f"Status: {result.status}")
+        print(f"Agents spawned: {result.agents_spawned}")
+        print(f"Tasks created: {result.tasks_created}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
