@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strands-swarms"
-version = "0.1.1"
+version = "0.1.2"
 description = "Task-based workflow orchestration for Strands Agents"
 authors = [
     {name = "Zhuocheng Xu", email = "zhuocheng.xu@icloud.com"}
