@@ -9,11 +9,13 @@ RL support coming soon via strands-sglang integration.
 """
 
 import asyncio
+import os
+import sys
 
 from strands import tool
 from strands.models import BedrockModel
 
-from strands_swarms import DynamicSwarm, TaskDefinition
+from strands_swarms import AgentDefinition, DynamicSwarm, TaskDefinition
 
 
 # =============================================================================
@@ -69,23 +71,125 @@ MODELS = {
 # Main
 # =============================================================================
 
+RESET = "\033[0m"
+
+
+def _supports_color() -> bool:
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("FORCE_COLOR") is not None:
+        return True
+    # Example script: default to color for readability, even if stdout isn't a TTY.
+    return True
+
+
+def _colorize(text: str, color: str | None, *, enabled: bool) -> str:
+    if not enabled or not color:
+        return text
+    return f"{color}{text}{RESET}"
+
+
 def _format_status(status: object) -> str:
     value = getattr(status, "value", None)
     return str(value) if value is not None else str(status)
 
 
+def _extract_text(result: object) -> str:
+    message = getattr(result, "message", None)
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, list) and content:
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, dict) and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+            if parts:
+                return "".join(parts)
+    return str(result)
+
+
+def _render_plan(
+    agents: dict[str, AgentDefinition],
+    tasks: dict[str, TaskDefinition],
+    *,
+    color_enabled: bool,
+) -> str:
+    task_to_agent = {name: t.agent for name, t in tasks.items()}
+
+    def _agent_label(name: str) -> str:
+        return _colorize(
+            name,
+            getattr(agents.get(name), "color", None),
+            enabled=color_enabled,
+        )
+
+    def _task_label(name: str) -> str:
+        agent_name = task_to_agent.get(name)
+        return _colorize(
+            name,
+            getattr(agents.get(agent_name), "color", None),
+            enabled=color_enabled,
+        )
+
+    lines = [f"Agents ({len(agents)}):"]
+    for name in sorted(agents.keys()):
+        lines.append(f"  - {_agent_label(name)}: {agents[name].role}")
+
+    lines.append(f"\nTasks ({len(tasks)}):")
+    for task_name in sorted(tasks.keys()):
+        task = tasks[task_name]
+        depends = ""
+        if task.depends_on:
+            deps = ", ".join(_task_label(d) for d in task.depends_on)
+            depends = f" (depends: [{deps}])"
+
+        lines.append(
+            f"  - {_task_label(task_name)} -> {_agent_label(task.agent)}{depends}"
+        )
+
+    return "\n".join(lines)
+
+
 def _render_dashboard(
+    agents: dict[str, AgentDefinition],
     tasks: dict[str, TaskDefinition],
     status_by_task: dict[str, str],
+    *,
+    color_enabled: bool,
 ) -> str:
+    task_to_agent = {name: t.agent for name, t in tasks.items()}
+
+    def _agent_label(name: str) -> str:
+        return _colorize(
+            name,
+            getattr(agents.get(name), "color", None),
+            enabled=color_enabled,
+        )
+
+    def _task_label(name: str) -> str:
+        agent_name = task_to_agent.get(name)
+        return _colorize(
+            name,
+            getattr(agents.get(agent_name), "color", None),
+            enabled=color_enabled,
+        )
+
+    def _status_label(task_name: str, status: str) -> str:
+        agent_name = task_to_agent.get(task_name)
+        return _colorize(
+            status,
+            getattr(agents.get(agent_name), "color", None),
+            enabled=color_enabled,
+        )
+
     def _blocked_by(task_name: str) -> list[str]:
         deps = tasks[task_name].depends_on
         return [d for d in deps if status_by_task.get(d) != "completed"]
 
-    agents = sorted({t.agent for t in tasks.values()})
+    agent_names = sorted({t.agent for t in tasks.values()})
     lines = ["\n" + "-" * 40, "TASK STATUS", "-" * 40]
 
-    for agent in agents:
+    for agent in agent_names:
         task_names = sorted([n for n, t in tasks.items() if t.agent == agent])
         if not task_names:
             continue
@@ -96,17 +200,22 @@ def _render_dashboard(
             if status == "pending":
                 blocked = _blocked_by(name)
                 if blocked:
-                    status = f"pending (blocked: {', '.join(blocked)})"
+                    blocked_list = ", ".join(_task_label(d) for d in blocked)
+                    status = f"pending (blocked: {blocked_list})"
                 else:
                     status = "pending (ready)"
-            rendered.append(f"{name} [{status}]")
+            if status in {"pending (ready)", "executing", "completed", "failed", "interrupted"}:
+                status = _status_label(name, status)
+            rendered.append(f"{_task_label(name)} [{status}]")
 
-        lines.append(f"{agent}: " + ", ".join(rendered))
+        lines.append(f"{_agent_label(agent)}: " + ", ".join(rendered))
 
     return "\n".join(lines) + "\n"
 
 
 async def main() -> None:
+    color_enabled = _supports_color()
+
     swarm = DynamicSwarm(
         available_tools=TOOLS,
         available_models=MODELS,
@@ -118,9 +227,13 @@ async def main() -> None:
     print(f"Query: {query}\n{'=' * 60}\n")
 
     result = None
+    agents: dict[str, AgentDefinition] = {}
     tasks: dict[str, TaskDefinition] = {}
     status_by_task: dict[str, str] = {}
-    async for event in swarm.stream_async(query):
+    tool_counts: dict[str, int] = {}
+    seen_tool_use_ids: dict[str, set[str]] = {}
+
+    async for event in swarm.stream_async(query, include_subagent_events=True):
         t = event.get("type")
 
         if t == "swarm_started":
@@ -140,8 +253,9 @@ async def main() -> None:
             print("\n" + "·" * 40)
             print("PLAN READY")
             print("·" * 40)
-            print(event.get("summary", ""))
+            agents = event.get("agents") or {}
             tasks = event.get("tasks") or {}
+            print(_render_plan(agents, tasks, color_enabled=color_enabled))
 
         elif t == "execution_started":
             print("\n" + "-" * 40)
@@ -149,13 +263,59 @@ async def main() -> None:
             print("-" * 40)
             task_names = event.get("tasks") or sorted(tasks.keys())
             status_by_task = {name: "pending" for name in task_names}
-            print(_render_dashboard(tasks, status_by_task))
+            print(
+                _render_dashboard(
+                    agents, tasks, status_by_task, color_enabled=color_enabled
+                )
+            )
 
         elif t == "multiagent_node_start":
             node_id = event.get("node_id")
             if node_id in status_by_task:
                 status_by_task[node_id] = "executing"
-                print(_render_dashboard(tasks, status_by_task))
+                tool_counts[node_id] = 0
+                seen_tool_use_ids[node_id] = set()
+                print(
+                    _render_dashboard(
+                        agents, tasks, status_by_task, color_enabled=color_enabled
+                    )
+                )
+
+        elif t == "multiagent_node_stream":
+            node_id = event.get("node_id")
+            agent_event = event.get("event")
+            if node_id in status_by_task and isinstance(agent_event, dict):
+                task_def = tasks.get(node_id)
+                if task_def and task_def.agent in agents:
+                    agent_def = agents[task_def.agent]
+
+                    chunk = agent_event.get("event")
+                    if isinstance(chunk, dict):
+                        tool_use = (
+                            chunk.get("contentBlockStart", {})
+                            .get("start", {})
+                            .get("toolUse")
+                        )
+                        tool_use_id = (
+                            tool_use.get("toolUseId")
+                            if isinstance(tool_use, dict)
+                            else None
+                        )
+                        tool_name = (
+                            tool_use.get("name") if isinstance(tool_use, dict) else None
+                        )
+
+                        if isinstance(tool_use_id, str) and isinstance(tool_name, str):
+                            if tool_use_id not in seen_tool_use_ids.get(node_id, set()):
+                                seen_tool_use_ids.setdefault(node_id, set()).add(tool_use_id)
+                                tool_counts[node_id] = tool_counts.get(node_id, 0) + 1
+                                print(
+                                    _colorize(
+                                        f"{task_def.agent}: Tool #{tool_counts[node_id]}: {tool_name}",
+                                        agent_def.color,
+                                        enabled=color_enabled,
+                                    )
+                                )
 
         elif t == "multiagent_node_stop":
             node_id = event.get("node_id")
@@ -164,7 +324,27 @@ async def main() -> None:
                 status_by_task[node_id] = _format_status(
                     getattr(node_result, "status", None)
                 )
-                print(_render_dashboard(tasks, status_by_task))
+
+                task_def = tasks.get(node_id)
+                if task_def and task_def.agent in agents:
+                    agent_def = agents[task_def.agent]
+                    output = getattr(node_result, "result", None)
+                    if output is not None:
+                        header = f"{task_def.agent}: {node_id}"
+                        print(_colorize(header, agent_def.color, enabled=color_enabled))
+                        print(
+                            _colorize(
+                                _extract_text(output).strip() + "\n",
+                                agent_def.color,
+                                enabled=color_enabled,
+                            )
+                        )
+
+                print(
+                    _render_dashboard(
+                        agents, tasks, status_by_task, color_enabled=color_enabled
+                    )
+                )
 
         elif t == "multiagent_result":
             graph_result = event.get("result")

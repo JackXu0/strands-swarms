@@ -344,6 +344,7 @@ def build_swarm(
             system_prompt=agent_def.build_system_prompt(),
             model=model,
             tools=tools or None,  # type: ignore[arg-type]
+            callback_handler=None,
         )
 
     # Build the execution graph

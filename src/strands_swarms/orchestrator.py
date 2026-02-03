@@ -112,4 +112,5 @@ def create_orchestrator_agent(
         system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
         model=model,
         tools=create_orchestrator_tools(definition),
+        callback_handler=None,
     )
