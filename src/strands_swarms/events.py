@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Any, Callable
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
 from strands.multiagent.base import Status
 
+from .definition import AGENT_COLORS
+
 if TYPE_CHECKING:
-    from .swarm import AgentDefinition, TaskDefinition
+    from .definition import AgentDefinition, TaskDefinition
 
 # =============================================================================
 # Planning Events
@@ -230,15 +232,6 @@ class SwarmFailedEvent(BaseHookEvent):
 # Default Hook Provider
 # =============================================================================
 
-# ANSI Color Constants (for consistent agent output coloring)
-AGENT_COLORS = [
-    "\033[94m",   # Blue
-    "\033[92m",   # Green
-    "\033[93m",   # Yellow
-    "\033[95m",   # Magenta
-    "\033[96m",   # Cyan
-    "\033[91m",   # Red
-]
 RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"

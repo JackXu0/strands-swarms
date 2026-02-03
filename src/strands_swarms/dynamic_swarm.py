@@ -347,6 +347,7 @@ INSTRUCTIONS:
 1. Break down the request into logical steps
 2. Create specialized agents with appropriate tools using spawn_agent()
 3. Create tasks with dependencies using create_task()
+   - Important: dependencies must already exist (create dependency tasks first)
 4. Call finalize_plan() when done
 
 Keep the workflow simple - only create agents and tasks that are necessary."""

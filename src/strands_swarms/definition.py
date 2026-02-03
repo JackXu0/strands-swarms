@@ -8,7 +8,15 @@ from typing import TYPE_CHECKING, Any, Callable
 from strands.hooks import HookRegistry
 from strands.session.file_session_manager import FileSessionManager
 
-from .events import AGENT_COLORS
+# ANSI Color Constants (for consistent agent output coloring)
+AGENT_COLORS: list[str] = [
+    "\033[94m",  # Blue
+    "\033[92m",  # Green
+    "\033[93m",  # Yellow
+    "\033[95m",  # Magenta
+    "\033[96m",  # Cyan
+    "\033[91m",  # Red
+]
 
 if TYPE_CHECKING:
     from strands.models import Model
@@ -137,7 +145,10 @@ class SwarmDefinition:
         self.sub_agents[definition.name] = definition
 
     def register_task(self, definition: TaskDefinition) -> None:
-        """Register a task definition."""
+        """Register a task definition.
+
+        Note: dependencies must already be registered (create dependency tasks first).
+        """
         if definition.name in self.tasks:
             raise ValueError(f"Task '{definition.name}' already exists")
 

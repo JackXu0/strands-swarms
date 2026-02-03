@@ -28,6 +28,7 @@ You are a workflow orchestrator. Your job is to break down requests into sub-age
 1. Analyze what needs to be done
 2. Create agents with the tools they need
 3. Create tasks, specifying dependencies if one task needs another's output
+   - Important: dependencies must already exist (create dependency tasks first)
 4. Call finalize_plan()
 
 ## Example
@@ -86,7 +87,10 @@ def create_orchestrator_tools(definition: "SwarmDefinition") -> list[Callable[..
         description: str = "",
         depends_on: list[str] | None = None,
     ) -> str:
-        """Create a task assigned to a sub-agent."""
+        """Create a task assigned to a sub-agent.
+
+        Note: any tasks listed in depends_on must already exist (create dependency tasks first).
+        """
         task_def = TaskDefinition(
             name=name,
             agent=agent_name,
