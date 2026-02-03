@@ -36,6 +36,110 @@ if TYPE_CHECKING:
     from strands.models import Model
 
 
+@dataclass(frozen=True)
+class SwarmCapabilities:
+    """Immutable configuration for available tools and models (created once per swarm)."""
+
+    available_tools: dict[str, Callable[..., Any]]
+    available_models: dict[str, "Model"]
+    default_model: str | None = None
+
+    def validate_tools(self, tool_names: list[str]) -> None:
+        """Validate that all tool names exist in available tools."""
+        for tool_name in tool_names:
+            if tool_name not in self.available_tools:
+                available = list(self.available_tools.keys())
+                raise ValueError(
+                    f"Tool '{tool_name}' not in available tools: {available}"
+                )
+
+    def validate_model(self, model_name: str | None) -> None:
+        """Validate that the model name exists in available models."""
+        if model_name and model_name not in self.available_models:
+            available = list(self.available_models.keys())
+            raise ValueError(
+                f"Model '{model_name}' not in available models: {available}"
+            )
+
+    @property
+    def available_tool_names(self) -> list[str]:
+        return list(self.available_tools.keys())
+
+    @property
+    def available_model_names(self) -> list[str]:
+        return list(self.available_models.keys())
+
+
+class SwarmDefinition:
+    """Mutable swarm definition created fresh per query (sub-agents and tasks)."""
+
+    def __init__(
+        self,
+        capabilities: SwarmCapabilities,
+        hook_registry: HookRegistry | None = None,
+    ) -> None:
+        self._capabilities = capabilities
+        self._hook_registry = hook_registry
+        self.sub_agents: dict[str, AgentDefinition] = {}
+        self.tasks: dict[str, TaskDefinition] = {}
+        self._color_index = 0
+
+    @property
+    def capabilities(self) -> SwarmCapabilities:
+        return self._capabilities
+
+    def emit(self, event: Any) -> None:
+        """Emit an event to the hook registry."""
+        if self._hook_registry and self._hook_registry.has_callbacks():
+            self._hook_registry.invoke_callbacks(event)
+
+    def register_agent(self, definition: AgentDefinition) -> None:
+        """Register a sub-agent definition."""
+        if definition.name in self.sub_agents:
+            raise ValueError(f"Agent '{definition.name}' already exists")
+
+        self._capabilities.validate_tools(definition.tools)
+        self._capabilities.validate_model(definition.model)
+
+        definition.color = AGENT_COLORS[self._color_index % len(AGENT_COLORS)]
+        self._color_index += 1
+
+        self.sub_agents[definition.name] = definition
+
+    def register_task(self, definition: TaskDefinition) -> None:
+        """Register a task definition."""
+        if definition.name in self.tasks:
+            raise ValueError(f"Task '{definition.name}' already exists")
+
+        if definition.agent not in self.sub_agents:
+            available = list(self.sub_agents.keys())
+            raise ValueError(
+                f"Agent '{definition.agent}' not found. Available: {available}"
+            )
+
+        for dep in definition.depends_on:
+            if dep not in self.tasks:
+                available = list(self.tasks.keys())
+                raise ValueError(
+                    f"Dependency '{dep}' not found. Available: {available}"
+                )
+
+        self.tasks[definition.name] = definition
+
+    def get_summary(self) -> str:
+        """Get a summary of registered sub-agents and tasks."""
+        lines = [
+            f"Agents ({len(self.sub_agents)}):",
+            *[f"  - {name}: {d.role}" for name, d in self.sub_agents.items()],
+            f"\nTasks ({len(self.tasks)}):",
+            *[
+                f"  - {name} -> {d.agent}" + (f" (depends: {d.depends_on})" if d.depends_on else "")
+                for name, d in self.tasks.items()
+            ],
+        ]
+        return "\n".join(lines)
+
+
 @dataclass
 class SessionConfig:
     session_id: str
@@ -78,122 +182,13 @@ class TaskDefinition:
     depends_on: list[str] = field(default_factory=list)
 
 
-class SwarmConfig:
-    def __init__(
-        self,
-        available_tools: dict[str, Callable[..., Any]],
-        available_models: dict[str, Model],
-        default_model: str | None = None,
-    ) -> None:
-        self._available_tools = available_tools
-        self._available_models = available_models
-        self._default_model = default_model or next(iter(available_models.keys()), None)
-
-        self._agents: dict[str, AgentDefinition] = {}
-        self._tasks: dict[str, TaskDefinition] = {}
-        self._color_index = 0
-
-    def register_agent(self, definition: AgentDefinition) -> None:
-        if definition.name in self._agents:
-            raise ValueError(f"Agent '{definition.name}' already exists")
-
-        for tool_name in definition.tools:
-            if tool_name not in self._available_tools:
-                available = list(self._available_tools.keys())
-                raise ValueError(
-                    f"Tool '{tool_name}' not in available tools: {available}"
-                )
-
-        if definition.model and definition.model not in self._available_models:
-            available = list(self._available_models.keys())
-            raise ValueError(
-                f"Model '{definition.model}' not in available models: {available}"
-            )
-
-        definition.color = AGENT_COLORS[self._color_index % len(AGENT_COLORS)]
-        self._color_index += 1
-        
-        self._agents[definition.name] = definition
-
-    def register_task(self, definition: TaskDefinition) -> None:
-        if definition.name in self._tasks:
-            raise ValueError(f"Task '{definition.name}' already exists")
-
-        if definition.agent not in self._agents:
-            available = list(self._agents.keys())
-            raise ValueError(
-                f"Agent '{definition.agent}' not found. Available: {available}"
-            )
-
-        for dep in definition.depends_on:
-            if dep not in self._tasks:
-                available = list(self._tasks.keys())
-                raise ValueError(
-                    f"Dependency '{dep}' not found. Available: {available}"
-                )
-
-        self._tasks[definition.name] = definition
-
-    def clear(self) -> None:
-        self._agents.clear()
-        self._tasks.clear()
-        self._color_index = 0
-
-    @property
-    def agents(self) -> dict[str, AgentDefinition]:
-        return dict(self._agents)
-
-    @property
-    def tasks(self) -> dict[str, TaskDefinition]:
-        return dict(self._tasks)
-
-    @property
-    def available_tools(self) -> dict[str, Callable[..., Any]]:
-        return self._available_tools
-
-    @property
-    def available_models(self) -> dict[str, Model]:
-        return self._available_models
-
-    @property
-    def default_model(self) -> str | None:
-        return self._default_model
-
-    @property
-    def available_tool_names(self) -> list[str]:
-        return list(self._available_tools.keys())
-
-    @property
-    def available_model_names(self) -> list[str]:
-        return list(self._available_models.keys())
-    
-    def get_summary(self) -> str:
-        lines = [
-            f"Agents ({len(self._agents)}):",
-            *[f"  - {name}: {d.role}" for name, d in self._agents.items()],
-            f"\nTasks ({len(self._tasks)}):",
-            *[
-                f"  - {name} -> {d.agent}" + (f" (depends: {d.depends_on})" if d.depends_on else "")
-                for name, d in self._tasks.items()
-            ],
-        ]
-        return "\n".join(lines)
-
-
-@dataclass
-class _SwarmBuildResult:
-    graph: Graph
-    agents: dict[str, Agent]
-    task_manager: TaskManager
-
-
 class _TaskLifecycleHook(HookProvider):
     """Hook provider that tracks task lifecycle via graph node execution events."""
 
     def __init__(self, task_manager: TaskManager) -> None:
         self._task_manager = task_manager
 
-    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+    def register_hooks(self, registry: HookRegistry, **_: Any) -> None:
         registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
         registry.add_callback(AfterNodeCallEvent, self._on_node_complete)
 
@@ -211,89 +206,57 @@ class _TaskLifecycleHook(HookProvider):
 
 
 def build_swarm(
-    config: SwarmConfig,
+    context: SwarmDefinition,
     *,
     use_colored_output: bool = False,
     execution_timeout: float = 900.0,
     task_timeout: float = 300.0,
     session_config: SessionConfig | None = None,
-    hook_registry: HookRegistry | None = None,
-) -> _SwarmBuildResult:
-    # Build all agents first, independent of tasks
+) -> Graph:
+    """Build a swarm graph from an SwarmDefinition."""
+    capabilities = context.capabilities
+
+    if not context.tasks:
+        raise ValueError("No tasks registered - cannot build swarm")
+
+    # Build strands Agent instances from definitions
     agents: dict[str, Agent] = {}
-
-    def build_agent(agent_name: str) -> Agent:
-        definition = config.agents.get(agent_name)
-        if not definition:
-            raise ValueError(f"Agent '{agent_name}' not found")
-
-        tools = [config.available_tools[t] for t in definition.tools]
-        model_name = definition.model or config.default_model
-        model = config.available_models.get(model_name) if model_name else None
+    for name, definition in context.sub_agents.items():
+        tools = [capabilities.available_tools[t] for t in definition.tools]
+        model_name = definition.model or capabilities.default_model
+        model = capabilities.available_models.get(model_name) if model_name else None
 
         callback_handler = None
         if use_colored_output and definition.color:
-            callback_handler = create_colored_callback_handler(definition.color, agent_name)
+            callback_handler = create_colored_callback_handler(definition.color, name)
 
-        system_prompt = definition.build_system_prompt()
-
-        # Create per-agent session manager for isolated memory
-        agent_session = session_config.for_agent(agent_name) if session_config else None
-
-        return Agent(
-            name=definition.name,
-            system_prompt=system_prompt,
+        agents[name] = Agent(
+            name=name,
+            system_prompt=definition.build_system_prompt(),
             model=model,
-            tools=tools if tools else None,  # type: ignore[arg-type]
+            tools=tools or None,  # type: ignore[arg-type]
             callback_handler=callback_handler,
-            session_manager=agent_session,
+            session_manager=session_config.for_agent(name) if session_config else None,
         )
 
-    # Build each unique agent once
-    for agent_name in config.agents:
-        agents[agent_name] = build_agent(agent_name)
+    # Create TaskManager from definitions (tracks execution state)
+    task_manager = TaskManager(context.tasks, hook_registry=context._hook_registry)
 
-    if not config.tasks:
-        raise ValueError("No tasks registered - cannot build swarm")
-
-    # Create TaskManager and register all tasks
-    task_manager = TaskManager(hook_registry=hook_registry)
-    
-    for task_name, task_def in config.tasks.items():
-        task_manager.create(
-            name=task_name,
-            agent=task_def.agent,
-            description=task_def.description,
-            depends_on=task_def.depends_on,
-        )
-
-    # Build the execution graph using TaskManager data
+    # Build the execution graph
     builder = GraphBuilder()
-
     for task_name, task in task_manager.all_tasks.items():
-        assigned_agent = agents[task.agent]
-        builder.add_node(assigned_agent, task_name)
-        
-        # Add edges for dependencies
+        builder.add_node(agents[task.agent], task_name)
         for dep_name in task.depends_on:
             if dep_name in task_manager:
                 builder.add_edge(dep_name, task_name)
 
     builder.set_execution_timeout(execution_timeout)
     builder.set_node_timeout(task_timeout)
-
-    # Set graph-level session for execution state tracking
     if session_config:
         builder.set_session_manager(session_config.for_graph())
-
-    # Register task lifecycle hook to track start/complete via graph execution
     builder.set_hook_providers([_TaskLifecycleHook(task_manager)])
 
-    return _SwarmBuildResult(
-        graph=builder.build(),
-        agents=agents,
-        task_manager=task_manager,
-    )
+    return builder.build()
 
 
 @dataclass
@@ -351,9 +314,9 @@ class DynamicSwarm:
     def __init__(
         self,
         available_tools: dict[str, Callable[..., Any]] | None = None,
-        available_models: dict[str, Model] | None = None,
+        available_models: dict[str, "Model"] | None = None,
         *,
-        orchestrator_model: Model | None = None,
+        orchestrator_model: "Model" | None = None,
         default_agent_model: str | None = None,
         max_iterations: int = 20,
         execution_timeout: float = 900.0,
@@ -363,10 +326,13 @@ class DynamicSwarm:
         hooks: list[HookProvider] | None = None,
         verbose: bool = False,
     ) -> None:
-        self._available_tools = available_tools or {}
-        self._available_models = available_models or {}
+        # Create immutable capabilities once
+        self._capabilities = SwarmCapabilities(
+            available_tools=available_tools or {},
+            available_models=available_models or {},
+            default_model=default_agent_model,
+        )
         self._orchestrator_model = orchestrator_model
-        self._default_agent_model = default_agent_model
         self._max_iterations = max_iterations
         self._execution_timeout = execution_timeout
         self._task_timeout = task_timeout
@@ -395,104 +361,97 @@ class DynamicSwarm:
             self._hook_registry.invoke_callbacks(event)
 
     async def execute_async(self, query: str) -> DynamicSwarmResult:
-        from .orchestrator import set_swarm_config
-
-        config = SwarmConfig(
-            available_tools=self._available_tools,
-            available_models=self._available_models,
-            default_model=self._default_agent_model,
+        # Create fresh execution context per query
+        context = SwarmDefinition(
+            capabilities=self._capabilities,
+            hook_registry=self._hook_registry,
         )
 
-        set_swarm_config(config, hook_registry=self._hook_registry)
+        self._emit(SwarmStartedEvent(
+            query=query,
+            available_tools=self._capabilities.available_tool_names,
+            available_models=self._capabilities.available_model_names,
+        ))
 
-        try:
-            self._emit(SwarmStartedEvent(
-                query=query,
-                available_tools=list(self._available_tools.keys()),
-                available_models=list(self._available_models.keys()),
+        # =================================================================
+        # Orchestrator Phase 1 & 2: Planning, Creating Subagents, Assigning Tasks
+        # =================================================================
+        self._emit(PlanningStartedEvent())
+
+        planning_result = await self._run_planning(query, context)
+        if not planning_result.success:
+            self._emit(SwarmFailedEvent(
+                error=planning_result.error or "Orchestration failed"
             ))
-            
-            # =================================================================
-            # Orchestrator Phase 1 & 2: Planning, Creating Subagents, Assigning Tasks
-            # =================================================================
-            self._emit(PlanningStartedEvent())
-            
-            planning_result = await self._run_planning(query, config)
-            if not planning_result.success:
-                self._emit(SwarmFailedEvent(
-                    error=planning_result.error or "Orchestration failed"
-                ))
-                return DynamicSwarmResult(
-                    status=Status.FAILED,
-                    planning_output=planning_result.output,
-                    error=planning_result.error,
-                )
-
-            if not config.tasks:
-                self._emit(SwarmFailedEvent(
-                    error="Orchestration completed but no tasks were created"
-                ))
-                return DynamicSwarmResult(
-                    status=Status.FAILED,
-                    planning_output=planning_result.output,
-                    error="Orchestration completed but no tasks were created",
-                )
-
-            use_colored_output = self._hook_registry.has_callbacks()
-            build_result = build_swarm(
-                config,
-                use_colored_output=use_colored_output,
-                execution_timeout=self._execution_timeout,
-                task_timeout=self._task_timeout,
-                session_config=self._session_config,
-                hook_registry=self._hook_registry,
-            )
-
-            self._emit(ExecutionStartedEvent(
-                tasks=list(config.tasks.keys()),
-            ))
-
-            # Graph execution handles task lifecycle via _TaskLifecycleHook
-            # Pass the original query as the task input for entry nodes
-            execution_result = await build_result.graph.invoke_async(query)
-
-            self._emit(ExecutionCompletedEvent(
-                status=str(execution_result.status) if execution_result else "FAILED",
-                agent_count=len(config.agents),
-                task_count=len(config.tasks),
-            ))
-
-            assert planning_result.orchestrator is not None
-            final_response = await self._run_completion(
-                query, config, execution_result, 
-                orchestrator=planning_result.orchestrator
-            )
-            
-            self._emit(SwarmCompletedEvent())
-
             return DynamicSwarmResult(
-                status=execution_result.status if execution_result else Status.FAILED,
+                status=Status.FAILED,
                 planning_output=planning_result.output,
-                execution_result=execution_result,
-                final_response=final_response,
-                agents_spawned=len(config.agents),
-                tasks_created=len(config.tasks),
+                error=planning_result.error,
             )
 
-        finally:
-            set_swarm_config(None)
+        if not context.tasks:
+            self._emit(SwarmFailedEvent(
+                error="Orchestration completed but no tasks were created"
+            ))
+            return DynamicSwarmResult(
+                status=Status.FAILED,
+                planning_output=planning_result.output,
+                error="Orchestration completed but no tasks were created",
+            )
+
+        graph = build_swarm(
+            context,
+            use_colored_output=self._hook_registry.has_callbacks(),
+            execution_timeout=self._execution_timeout,
+            task_timeout=self._task_timeout,
+            session_config=self._session_config,
+        )
+
+        self._emit(ExecutionStartedEvent(
+            tasks=list(context.tasks.keys()),
+        ))
+
+        # Graph execution handles task lifecycle via _TaskLifecycleHook
+        execution_result = await graph.invoke_async(query)
+
+        self._emit(ExecutionCompletedEvent(
+            status=str(execution_result.status) if execution_result else "FAILED",
+            agent_count=len(context.sub_agents),
+            task_count=len(context.tasks),
+        ))
+
+        assert planning_result.orchestrator is not None
+        final_response = await self._run_completion(
+            query, context, execution_result,
+            orchestrator=planning_result.orchestrator
+        )
+
+        self._emit(SwarmCompletedEvent())
+
+        return DynamicSwarmResult(
+            status=execution_result.status if execution_result else Status.FAILED,
+            planning_output=planning_result.output,
+            execution_result=execution_result,
+            final_response=final_response,
+            agents_spawned=len(context.sub_agents),
+            tasks_created=len(context.tasks),
+        )
 
     async def _run_planning(
-        self, query: str, state: SwarmConfig
+        self, query: str, context: SwarmDefinition
     ) -> _PlanningResult:
         from .orchestrator import create_orchestrator_agent
 
-        orchestrator = create_orchestrator_agent(model=self._orchestrator_model)
+        orchestrator = create_orchestrator_agent(
+            context=context,
+            model=self._orchestrator_model,
+        )
 
+        capabilities = context.capabilities
         orchestration_prompt = self.ORCHESTRATION_PROMPT_TEMPLATE.format(
             query=query,
-            available_tools=state.available_tool_names or ['none'],
-            available_models=state.available_model_names or ['default only'],
+            available_tools=capabilities.available_tool_names or ["none"],
+            available_models=capabilities.available_model_names or ["default only"],
         )
 
         try:
@@ -512,7 +471,7 @@ class DynamicSwarm:
     async def _run_completion(
         self,
         query: str,
-        state: SwarmConfig,
+        context: SwarmDefinition,
         execution_result: MultiAgentResult | None,
         orchestrator: Agent,
     ) -> str | None:
@@ -521,7 +480,7 @@ class DynamicSwarm:
 
         # Collect all task outputs
         task_outputs: list[str] = []
-        for task_name in state.tasks:
+        for task_name in context.tasks:
             node_result = execution_result.results.get(task_name)
             if node_result:
                 task_outputs.append(f"[{task_name}]:\n{node_result.result}")
@@ -533,10 +492,10 @@ class DynamicSwarm:
             query=query,
             task_outputs="\n\n".join(task_outputs),
         )
-        
+
         try:
             result = orchestrator(completion_prompt)
-            
+
             if hasattr(result, "message") and result.message:
                 content = result.message.get("content", [])
                 if content and isinstance(content[0], dict):

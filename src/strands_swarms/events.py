@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from strands.hooks.registry import BaseHookEvent, HookProvider, HookRegistry
 from strands.multiagent.base import Status
+
+if TYPE_CHECKING:
+    from .swarm import AgentDefinition, TaskDefinition
 
 # =============================================================================
 # Planning Events
@@ -80,37 +83,18 @@ class TaskCreatedEvent(BaseHookEvent):
 
 
 @dataclass
-class AgentInfo:
-    """Info about a spawned agent for summary display."""
-    name: str
-    role: str
-    tools: list[str]
-    model: str | None
-    color: str | None = None
-
-
-@dataclass
-class TaskInfo:
-    """Info about a created task for summary display."""
-    name: str
-    agent: str
-    description: str | None
-    depends_on: list[str]
-
-
-@dataclass
 class PlanningCompletedEvent(BaseHookEvent):
     """Event triggered when planning phase completes.
-    
+
     Attributes:
         entry_task: The entry point task, if specified.
-        agents: List of agent info for summary display.
-        tasks: List of task info for summary display.
+        agents: List of AgentDefinition for summary display.
+        tasks: List of TaskDefinition for summary display.
     """
-    
+
     entry_task: str | None = None
-    agents: list[AgentInfo] = field(default_factory=list)
-    tasks: list[TaskInfo] = field(default_factory=list)
+    agents: list["AgentDefinition"] = field(default_factory=list)
+    tasks: list["TaskDefinition"] = field(default_factory=list)
 
 
 # =============================================================================
@@ -569,9 +553,6 @@ __all__ = [
     "ExecutionCompletedEvent",
     "SwarmCompletedEvent",
     "SwarmFailedEvent",
-    # Data types
-    "AgentInfo",
-    "TaskInfo",
     # Hook provider
     "PrintingHookProvider",
     # Callback handler factory

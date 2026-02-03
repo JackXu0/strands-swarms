@@ -19,6 +19,8 @@ from .events import (
 if TYPE_CHECKING:
     from strands.hooks.registry import HookRegistry
 
+    from .swarm import TaskDefinition
+
 
 TERMINAL_STATUSES: set[Status] = {Status.COMPLETED, Status.FAILED, Status.INTERRUPTED}
 
@@ -99,44 +101,26 @@ class Task:
 
 
 class TaskManager:
-    def __init__(self, hook_registry: HookRegistry | None = None) -> None:
-        self._tasks: dict[str, Task] = {}
+    def __init__(
+        self,
+        tasks: dict[str, "TaskDefinition"],
+        hook_registry: "HookRegistry | None" = None,
+    ) -> None:
         self._hooks = hook_registry
+        self._tasks: dict[str, Task] = {
+            name: Task(
+                name=name,
+                agent=defn.agent,
+                description=defn.description,
+                depends_on=defn.depends_on,
+            )
+            for name, defn in tasks.items()
+        }
 
     def _emit(self, event: Any) -> None:
         if not self._hooks or not self._hooks.has_callbacks():
             return
         self._hooks.invoke_callbacks(event)
-
-    def create(
-        self,
-        name: str,
-        agent: str,
-        description: str | None = None,
-        depends_on: list[str] | None = None,
-    ) -> Task:
-        if name in self._tasks:
-            raise ValueError(f"Task '{name}' already exists")
-
-        depends_on_list = depends_on or []
-        task = Task(
-            name=name,
-            agent=agent,
-            description=description,
-            depends_on=depends_on_list,
-        )
-        self._tasks[name] = task
-
-        self._emit(
-            TaskCreatedEvent(
-                name=name,
-                agent=agent,
-                description=description,
-                depends_on=depends_on_list,
-            )
-        )
-
-        return task
 
     def start(self, name: str) -> None:
         task = self._tasks[name]
