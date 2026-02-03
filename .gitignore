@@ -27,3 +27,4 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+*.lock

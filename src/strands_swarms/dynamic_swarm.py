@@ -18,11 +18,9 @@ from strands.multiagent.graph import (
 )
 
 from .definition import (
-    AgentDefinition,
     DynamicSwarmCapabilities,
     SessionConfig,
     SwarmDefinition,
-    TaskDefinition,
 )
 from .events import (
     ExecutionCompletedEvent,
@@ -41,150 +39,8 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# Prompts
-# =============================================================================
-
-PLANNING_PROMPT = """\
-Analyze this request and design a multi-agent workflow to complete it:
-
-REQUEST: {query}
-
-AVAILABLE TOOLS: {available_tools}
-AVAILABLE MODELS: {available_models}
-
-INSTRUCTIONS:
-1. Break down the request into logical steps
-2. Create specialized agents with appropriate tools using spawn_agent()
-3. Create tasks with dependencies using create_task()
-4. Call finalize_plan() when done
-
-Keep the workflow simple - only create agents and tasks that are necessary."""
-
-SYNTHESIS_PROMPT = """\
-The workflow has completed. Here are the results from each task:
-
-{task_outputs}
-
-ORIGINAL REQUEST: {query}
-
-Synthesize these results into a final response. Be direct - deliver the answer without mentioning the workflow or agents."""
-
-
-# =============================================================================
-# Graph Building
-# =============================================================================
-
-
-class _TaskLifecycleHook(HookProvider):
-    """Hook that tracks task lifecycle via graph execution events."""
-
-    def __init__(self, task_manager: TaskManager) -> None:
-        self._task_manager = task_manager
-
-    def register_hooks(self, registry: HookRegistry, **_: Any) -> None:
-        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
-        registry.add_callback(AfterNodeCallEvent, self._on_node_complete)
-
-    def _on_node_start(self, event: BeforeNodeCallEvent) -> None:
-        task = self._task_manager.get(event.node_id)
-        if task and task.is_pending:
-            self._task_manager.start(event.node_id)
-
-    def _on_node_complete(self, event: AfterNodeCallEvent) -> None:
-        task = self._task_manager.get(event.node_id)
-        if task and task.is_executing:
-            self._task_manager.complete(event.node_id)
-
-
-def build_swarm(
-    definition: SwarmDefinition,
-    *,
-    use_colored_output: bool = False,
-    execution_timeout: float = 900.0,
-    task_timeout: float = 300.0,
-    session_config: SessionConfig | None = None,
-) -> Graph:
-    """Build a strands Graph from a SwarmDefinition."""
-    capabilities = definition.capabilities
-
-    if not definition.tasks:
-        raise ValueError("No tasks registered - cannot build swarm")
-
-    # Build strands Agent instances from definitions
-    agents: dict[str, Agent] = {}
-    for name, agent_def in definition.sub_agents.items():
-        tools = [capabilities.available_tools[t] for t in agent_def.tools]
-        model_name = agent_def.model or capabilities.default_model
-        model = capabilities.available_models.get(model_name) if model_name else None
-
-        callback_handler = None
-        if use_colored_output and agent_def.color:
-            callback_handler = create_colored_callback_handler(agent_def.color, name)
-
-        agents[name] = Agent(
-            name=name,
-            system_prompt=agent_def.build_system_prompt(),
-            model=model,
-            tools=tools or None,  # type: ignore[arg-type]
-            callback_handler=callback_handler,
-            session_manager=session_config.for_agent(name) if session_config else None,
-        )
-
-    # Create TaskManager from definitions (tracks execution state)
-    task_manager = TaskManager(definition.tasks, hook_registry=definition._hook_registry)
-
-    # Build the execution graph
-    builder = GraphBuilder()
-    for task_name, task in task_manager.all_tasks.items():
-        builder.add_node(agents[task.agent], task_name)
-        for dep_name in task.depends_on:
-            if dep_name in task_manager:
-                builder.add_edge(dep_name, task_name)
-
-    builder.set_execution_timeout(execution_timeout)
-    builder.set_node_timeout(task_timeout)
-    if session_config:
-        builder.set_session_manager(session_config.for_graph())
-    builder.set_hook_providers([_TaskLifecycleHook(task_manager)])
-
-    return builder.build()
-
-
-# =============================================================================
 # DynamicSwarm
 # =============================================================================
-
-
-@dataclass
-class DynamicSwarmResult:
-    """Result from DynamicSwarm execution."""
-
-    status: Status
-    planning_output: str | None = None
-    execution_result: GraphResult | None = None
-    final_response: str | None = None
-    agents_spawned: int = 0
-    tasks_created: int = 0
-    error: str | None = None
-
-    def get_output(self, task_name: str) -> Any | None:
-        if self.execution_result and hasattr(self.execution_result, "results"):
-            node_result = self.execution_result.results.get(task_name)
-            if node_result:
-                return str(node_result.result)
-        return None
-
-    def __bool__(self) -> bool:
-        return self.status == Status.COMPLETED
-
-
-@dataclass
-class _PlanningResult:
-    success: bool
-    output: str | None = None
-    error: str | None = None
-    orchestrator: Agent | None = None
-
 
 class DynamicSwarm:
     """Dynamically construct and execute multi-agent workflows.
@@ -232,27 +88,29 @@ class DynamicSwarm:
 
     def execute(self, query: str) -> DynamicSwarmResult:
         """Execute a query synchronously."""
-        return asyncio.get_event_loop().run_until_complete(self.execute_async(query))
+        return asyncio.run(self.execute_async(query))
 
     async def execute_async(self, query: str) -> DynamicSwarmResult:
         """Execute a query asynchronously."""
+        use_colored_output = self._hook_registry.has_callbacks()
         definition = SwarmDefinition(
             capabilities=self._capabilities,
             hook_registry=self._hook_registry,
         )
+        emit = definition.emit
 
-        self._emit(SwarmStartedEvent(
+        emit(SwarmStartedEvent(
             query=query,
             available_tools=self._capabilities.available_tool_names,
             available_models=self._capabilities.available_model_names,
         ))
 
         # Phase 1: Planning
-        self._emit(PlanningStartedEvent())
+        emit(PlanningStartedEvent())
         planning_result = await self._run_planning(query, definition)
 
         if not planning_result.success:
-            self._emit(SwarmFailedEvent(error=planning_result.error or "Planning failed"))
+            emit(SwarmFailedEvent(error=planning_result.error or "Planning failed"))
             return DynamicSwarmResult(
                 status=Status.FAILED,
                 planning_output=planning_result.output,
@@ -260,7 +118,7 @@ class DynamicSwarm:
             )
 
         if not definition.tasks:
-            self._emit(SwarmFailedEvent(error="No tasks were created"))
+            emit(SwarmFailedEvent(error="No tasks were created"))
             return DynamicSwarmResult(
                 status=Status.FAILED,
                 planning_output=planning_result.output,
@@ -270,17 +128,18 @@ class DynamicSwarm:
         # Phase 2: Execution
         graph = build_swarm(
             definition,
-            use_colored_output=self._hook_registry.has_callbacks(),
+            use_colored_output=use_colored_output,
             execution_timeout=self._execution_timeout,
             task_timeout=self._task_timeout,
             session_config=self._session_config,
         )
 
-        self._emit(ExecutionStartedEvent(tasks=list(definition.tasks.keys())))
+        emit(ExecutionStartedEvent(tasks=list(definition.tasks.keys())))
         execution_result = await graph.invoke_async(query)
 
-        self._emit(ExecutionCompletedEvent(
-            status=str(execution_result.status) if execution_result else "FAILED",
+        status = execution_result.status if execution_result else Status.FAILED
+        emit(ExecutionCompletedEvent(
+            status=status.value,
             agent_count=len(definition.sub_agents),
             task_count=len(definition.tasks),
         ))
@@ -291,20 +150,19 @@ class DynamicSwarm:
             query, definition, execution_result, planning_result.orchestrator
         )
 
-        self._emit(SwarmCompletedEvent())
+        if status == Status.COMPLETED:
+            emit(SwarmCompletedEvent())
+        else:
+            emit(SwarmFailedEvent(error=f"Execution ended with status {status.value}"))
 
         return DynamicSwarmResult(
-            status=execution_result.status if execution_result else Status.FAILED,
+            status=status,
             planning_output=planning_result.output,
             execution_result=execution_result,
             final_response=final_response,
             agents_spawned=len(definition.sub_agents),
             tasks_created=len(definition.tasks),
         )
-
-    def _emit(self, event: Any) -> None:
-        if self._hook_registry.has_callbacks():
-            self._hook_registry.invoke_callbacks(event)
 
     async def _run_planning(
         self, query: str, definition: SwarmDefinition
@@ -323,12 +181,7 @@ class DynamicSwarm:
         )
 
         try:
-            result = orchestrator(prompt)
-            output = None
-            if hasattr(result, "message") and result.message:
-                content = result.message.get("content", [])
-                if content and isinstance(content[0], dict):
-                    output = content[0].get("text", "")
+            output = _extract_message_text(orchestrator(prompt))
             return _PlanningResult(success=True, output=output, orchestrator=orchestrator)
         except Exception as e:
             return _PlanningResult(success=False, error=str(e))
@@ -358,11 +211,174 @@ class DynamicSwarm:
         )
 
         try:
-            result = orchestrator(prompt)
-            if hasattr(result, "message") and result.message:
-                content = result.message.get("content", [])
-                if content and isinstance(content[0], dict):
-                    return content[0].get("text", "")
-            return None
+            return _extract_message_text(orchestrator(prompt))
         except Exception:
             return None
+
+
+# =============================================================================
+# Results
+# =============================================================================
+
+
+@dataclass
+class DynamicSwarmResult:
+    """Result from DynamicSwarm execution."""
+
+    status: Status
+    planning_output: str | None = None
+    execution_result: GraphResult | None = None
+    final_response: str | None = None
+    agents_spawned: int = 0
+    tasks_created: int = 0
+    error: str | None = None
+
+    def get_output(self, task_name: str) -> Any | None:
+        if self.execution_result and hasattr(self.execution_result, "results"):
+            node_result = self.execution_result.results.get(task_name)
+            if node_result:
+                return str(node_result.result)
+        return None
+
+    def __bool__(self) -> bool:
+        return self.status == Status.COMPLETED
+
+
+@dataclass
+class _PlanningResult:
+    success: bool
+    output: str | None = None
+    error: str | None = None
+    orchestrator: Agent | None = None
+
+
+# =============================================================================
+# Graph Building
+# =============================================================================
+
+class _TaskLifecycleHook(HookProvider):
+    """Hook that tracks task lifecycle via graph execution events."""
+
+    def __init__(self, task_manager: TaskManager) -> None:
+        self._task_manager = task_manager
+
+    def register_hooks(self, registry: HookRegistry, **_: Any) -> None:
+        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
+        registry.add_callback(AfterNodeCallEvent, self._on_node_complete)
+
+    def _on_node_start(self, event: BeforeNodeCallEvent) -> None:
+        task = self._task_manager.get(event.node_id)
+        if task and task.is_pending:
+            self._task_manager.start(event.node_id)
+
+    def _on_node_complete(self, event: AfterNodeCallEvent) -> None:
+        task = self._task_manager.get(event.node_id)
+        if task and task.is_executing:
+            self._task_manager.complete(event.node_id)
+
+
+def build_swarm(
+    definition: SwarmDefinition,
+    *,
+    use_colored_output: bool = False,
+    execution_timeout: float = 900.0,
+    task_timeout: float = 300.0,
+    session_config: SessionConfig | None = None,
+) -> Graph:
+    """Build a strands Graph from a SwarmDefinition."""
+    if not definition.tasks:
+        raise ValueError("No tasks registered - cannot build swarm")
+
+    capabilities = definition.capabilities
+
+    # Build strands Agent instances from definitions
+    agents: dict[str, Agent] = {}
+    for name, agent_def in definition.sub_agents.items():
+        tools = [capabilities.available_tools[t] for t in agent_def.tools]
+        model_name = agent_def.model or capabilities.default_model
+        model = capabilities.available_models.get(model_name) if model_name else None
+
+        callback_handler = None
+        if use_colored_output and agent_def.color:
+            callback_handler = create_colored_callback_handler(agent_def.color, name)
+
+        agents[name] = Agent(
+            name=name,
+            system_prompt=agent_def.build_system_prompt(),
+            model=model,
+            tools=tools or None,  # type: ignore[arg-type]
+            callback_handler=callback_handler,
+            session_manager=session_config.for_agent(name) if session_config else None,
+        )
+
+    task_manager = TaskManager(definition.tasks, hook_registry=definition.hook_registry)
+
+    # Build the execution graph
+    builder = GraphBuilder()
+    for task_name, task in definition.tasks.items():
+        builder.add_node(agents[task.agent], task_name)
+    for task_name, task in definition.tasks.items():
+        for dep_name in task.depends_on:
+            builder.add_edge(dep_name, task_name)
+
+    builder.set_execution_timeout(execution_timeout)
+    builder.set_node_timeout(task_timeout)
+    if session_config:
+        builder.set_session_manager(session_config.for_graph())
+    builder.set_hook_providers([_TaskLifecycleHook(task_manager)])
+
+    return builder.build()
+
+
+# =============================================================================
+# Prompts
+# =============================================================================
+
+
+PLANNING_PROMPT = """\
+Analyze this request and design a multi-agent workflow to complete it:
+
+REQUEST: {query}
+
+AVAILABLE TOOLS: {available_tools}
+AVAILABLE MODELS: {available_models}
+
+INSTRUCTIONS:
+1. Break down the request into logical steps
+2. Create specialized agents with appropriate tools using spawn_agent()
+3. Create tasks with dependencies using create_task()
+4. Call finalize_plan() when done
+
+Keep the workflow simple - only create agents and tasks that are necessary."""
+
+SYNTHESIS_PROMPT = """\
+The workflow has completed. Here are the results from each task:
+
+{task_outputs}
+
+ORIGINAL REQUEST: {query}
+
+Synthesize these results into a final response. Be direct - deliver the answer without mentioning the workflow or agents."""
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+
+def _extract_message_text(result: Any) -> str | None:
+    """Extract the first text block from a strands Agent result, if present."""
+    message = getattr(result, "message", None)
+    if not isinstance(message, dict):
+        return None
+
+    content = message.get("content")
+    if not isinstance(content, list) or not content:
+        return None
+
+    first = content[0]
+    if not isinstance(first, dict):
+        return None
+
+    text = first.get("text")
+    return text if isinstance(text, str) else None

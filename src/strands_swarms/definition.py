@@ -114,6 +114,10 @@ class SwarmDefinition:
     def capabilities(self) -> DynamicSwarmCapabilities:
         return self._capabilities
 
+    @property
+    def hook_registry(self) -> HookRegistry | None:
+        return self._hook_registry
+
     def emit(self, event: Any) -> None:
         """Emit an event to the hook registry."""
         if self._hook_registry and self._hook_registry.has_callbacks():
