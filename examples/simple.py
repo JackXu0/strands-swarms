@@ -1,6 +1,8 @@
 from strands import tool
 from strands.models import BedrockModel
+
 from strands_swarms import DynamicSwarm
+
 
 # Define your tools
 @tool
@@ -11,7 +13,7 @@ def search_web(query: str) -> str:
 @tool
 def analyze_data(data: str) -> str:
     """Analyze data and extract insights."""
-    return f"[Analysis]\nKey insights: ..."
+    return "[Analysis]\nKey insights: ..."
 
 @tool
 def write_file(path: str, content: str) -> str:

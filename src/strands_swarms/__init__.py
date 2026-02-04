@@ -43,7 +43,9 @@ Example:
     asyncio.run(run())
 """
 
-# Re-export strands types for convenience
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
 from strands.multiagent.base import Status
 
 from .definition import (
@@ -56,7 +58,10 @@ from .definition import (
 from .dynamic_swarm import DynamicSwarm, DynamicSwarmResult, build_swarm
 from .orchestrator import create_orchestrator_agent
 
-__version__ = "0.1.1"
+try:
+    __version__ = _version("strands-swarms")
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "0.0.0"
 
 __all__ = [
     # Main API

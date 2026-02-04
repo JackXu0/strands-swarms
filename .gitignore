@@ -24,7 +24,11 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+.swarm_sessions/
 
 # mypy
 .mypy_cache/
 *.lock
+
+# ruff
+.ruff_cache/

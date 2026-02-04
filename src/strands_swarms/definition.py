@@ -7,16 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from strands.session.file_session_manager import FileSessionManager
 
-# ANSI Color Constants (for consistent agent output coloring)
-AGENT_COLORS: list[str] = [
-    "\033[94m",  # Blue
-    "\033[92m",  # Green
-    "\033[93m",  # Yellow
-    "\033[95m",  # Magenta
-    "\033[96m",  # Cyan
-    "\033[91m",  # Red
-]
-
 if TYPE_CHECKING:
     from strands.models import Model
 
@@ -64,7 +54,6 @@ class AgentDefinition:
     instructions: str | None = None
     tools: list[str] = field(default_factory=list)
     model: str | None = None
-    color: str | None = None
 
     def build_system_prompt(self) -> str:
         parts = [f"You are a {self.role}."]
@@ -113,7 +102,6 @@ class SwarmDefinition:
         self._capabilities = capabilities
         self.sub_agents: dict[str, AgentDefinition] = {}
         self.tasks: dict[str, TaskDefinition] = {}
-        self._color_index = 0
 
     @property
     def capabilities(self) -> DynamicSwarmCapabilities:
@@ -126,9 +114,6 @@ class SwarmDefinition:
 
         self._capabilities.validate_tools(definition.tools)
         self._capabilities.validate_model(definition.model)
-
-        definition.color = AGENT_COLORS[self._color_index % len(AGENT_COLORS)]
-        self._color_index += 1
 
         self.sub_agents[definition.name] = definition
 
